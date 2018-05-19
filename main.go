@@ -4,7 +4,7 @@
 
 // A Go mirror of libfuse's hello.c
 
-package main
+package geodfs 
 
 import (
 	"flag"
