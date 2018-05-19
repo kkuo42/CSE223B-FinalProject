@@ -6,7 +6,7 @@ import (
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
-// RPC interface
+// RPC interface input output structs
 type Open_input struct {
 	name string
 	flags uint32
@@ -26,9 +26,19 @@ type OpenDir_output struct {
 	status fuse.Status
 }
 
+type GetAttr_input struct {
+	name string
+	context *fuse.Context
+}
+type GetAttr_output struct {
+	attr *fuse.Attr
+	status fuse.Status
+}
+
 type BackendFs interface {
 	Open(input *Open_input, output *Open_output) error
 	OpenDir(input *OpenDir_input, output *OpenDir_output) error
+	GetAttr(input *GetAttr_input, output *GetAttr_output) error
 }
 
 // TODO: implement a custom pathfs.FileSystem, fs is currently initialized with a loopback in fs-server/main.go
@@ -48,6 +58,9 @@ func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 	output.stream, output.status = self.fs.OpenDir(input.name, input.context)
 	return nil
 }
-
+func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error { 
+	output.attr, output.status = self.fs.GetAttr(input.name, input.context)
+	return nil
+}
 // assert that ServerFs implements BackendFs
 var _ BackendFs = new(ServerFs)

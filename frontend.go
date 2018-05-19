@@ -51,3 +51,15 @@ func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse
 	
 	return output.stream, output.status
 }
+func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.Attr, status fuse.Status) {
+	input := &GetAttr_input{name: name, context: context}
+	output := &GetAttr_output{}
+	
+	e := self.backendFs.GetAttr(input, output)
+	
+	if e != nil {
+		return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
+	}
+	
+	return output.attr, output.status
+}

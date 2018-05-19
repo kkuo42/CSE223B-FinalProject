@@ -22,8 +22,10 @@ func main() {
     // local
     dir := "from"
     frontend := proj.NewFrontendLocalyBacked(dir)
+    // use the provided unwrapped loopback fs for local
+    // frontend := pathfs.NewLoopbackFileSystem(dir)
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
-    
+
     // mount
     server, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), nil)
     if err != nil {
