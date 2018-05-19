@@ -1,0 +1,62 @@
+package proj
+
+import (
+	"net/rpc"
+)
+
+type ClientFs struct {
+	addr string
+	conn *rpc.Client
+}
+func (self *ClientFs) Connect() error {
+
+	if (self.conn == nil) {
+		conn, e := rpc.DialHTTP("tcp", self.addr)
+		if e != nil {
+			return e
+		}
+		self.conn = conn
+	}
+
+	return nil
+}
+
+func (self *ClientFs) Open(input *Open_input, output *Open_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.Clock", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Clock", input, output)
+		}
+	}
+
+	return e
+}
+
+func (self *ClientFs) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.Clock", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Clock", input, output)
+		}
+	}
+
+	return e	
+}
+// assert that ClientFs implements BackendFs
+var _ BackendFs = new(ClientFs)
