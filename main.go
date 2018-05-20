@@ -4,7 +4,7 @@
 
 // A Go mirror of libfuse's hello.c
 
-package geodfs 
+package main
 
 import (
 	"flag"
@@ -51,7 +51,7 @@ func (me *HelloFs) Open(name string, flags uint32, context *fuse.Context) (file 
 	return nodefs.NewDataFile([]byte(name)), fuse.OK
 }
 
-func main() {
+func mainold() {
 	flag.Parse()
 	if len(flag.Args()) < 1 {
 		log.Fatal("Usage:\n  hello MOUNTPOINT")
