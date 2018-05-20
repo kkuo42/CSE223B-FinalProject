@@ -24,14 +24,14 @@ func main() {
 
     // setup rpc server
     server := rpc.NewServer()
-    e := server.RegisterName("BackendFs", nfs)
+    e := server.RegisterName("BackendFs", &nfs)
     l, e := net.Listen ("tcp", addr)
     if e != nil {
         log.Fatal(e)
     }
 
     // serve
-    log.Printf("key-value store serving on %s", addr)
+    log.Printf("key-value store serving directory \"%s\" on %s", flag.Arg(0), addr)
     e = http.Serve(l, server)
     if e != nil {
         log.Fatal(e)

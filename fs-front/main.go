@@ -17,11 +17,11 @@ func main() {
 
     // setup frontend filesystem
     // remote 
-    // addr := "localhost:9898"
-    // frontend := proj.NewFrontendRemotelyBacked(addr)
+    addr := "localhost:9898"
+    frontend := proj.NewFrontendRemotelyBacked(addr)
     // local
-    dir := "from"
-    frontend := proj.NewFrontendLocalyBacked(dir)
+    // dir := "from"
+    // frontend := proj.NewFrontendLocalyBacked(dir)
     // use the provided unwrapped loopback fs for local
     // frontend := pathfs.NewLoopbackFileSystem(dir)
     nfs := pathfs.NewPathNodeFs(&frontend, nil)

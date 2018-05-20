@@ -8,6 +8,11 @@ type ClientFs struct {
 	addr string
 	conn *rpc.Client
 }
+
+func NewClientFs(addr string) ClientFs {
+	return ClientFs{addr: addr}
+}
+
 func (self *ClientFs) Connect() error {
 
 	if (self.conn == nil) {
@@ -76,6 +81,25 @@ func (self *ClientFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 	}
 
 	return e	
+}
+
+func (self *ClientFs) FileRead(input *FileRead_input, output *FileRead_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.FileRead", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.FileRead", input, output)
+		}
+	}
+
+	return e
 }
 // assert that ClientFs implements BackendFs
 var _ BackendFs = new(ClientFs)
