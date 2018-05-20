@@ -16,14 +16,12 @@ func main() {
     }
 
     // setup frontend filesystem
-    // remote 
     addr := "localhost:9898"
-    frontend := proj.NewFrontendRemotelyBacked(addr)
-    // local
+    frontend := proj.NewFrontendRemotelyBacked(addr) // remote
     // dir := "from"
-    // frontend := proj.NewFrontendLocalyBacked(dir)
-    // use the provided unwrapped loopback fs for local
-    // frontend := pathfs.NewLoopbackFileSystem(dir)
+    // frontend := proj.NewFrontendLocalyBacked(dir)    // local
+    // frontend := pathfs.NewLoopbackFileSystem(dir)    // local provided loopback
+
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
 
     // mount
@@ -31,5 +29,7 @@ func main() {
     if err != nil {
         log.Fatalf("Mount fail: %v\n", err)
     }
+    
+    log.Printf("filesystem store serving to directory \"%s\"", flag.Arg(0))
     server.Serve()
 }

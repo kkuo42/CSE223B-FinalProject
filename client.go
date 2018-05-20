@@ -2,6 +2,7 @@ package proj
 
 import (
 	"net/rpc"
+    "encoding/gob"
 )
 
 type ClientFs struct {
@@ -10,6 +11,7 @@ type ClientFs struct {
 }
 
 func NewClientFs(addr string) ClientFs {
+	gob.Register(&CustomReadResultData{})
 	return ClientFs{addr: addr}
 }
 

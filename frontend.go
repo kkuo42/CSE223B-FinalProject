@@ -87,9 +87,13 @@ func (self *FrontendFile) String() string {return fmt.Sprintf("FrontendFile(%v:%
 func (self *FrontendFile) InnerFile() nodefs.File {return nil} //ok
 
 func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResult, status fuse.Status) {
-	input := &FileRead_input{FileId: self.FileId, Off: off}
+	input := &FileRead_input{FileId: self.FileId, Off: off, BuffLen: len(dest)}
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
-	self.Backend.FileRead(input, output)
+	e := self.Backend.FileRead(input, output)
+	if e != nil {
+	    // log.Fatalf("backend faild to read file: %v\n", e)
+		return nil, fuse.EIO
+	}
 	return output.ReadResult, output.Status
 }
 

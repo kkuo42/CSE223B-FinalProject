@@ -1,6 +1,8 @@
 package proj
 
 import (
+    "encoding/gob"
+
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -39,6 +41,7 @@ type GetAttr_output struct {
 type FileRead_input struct {
 	FileId int
 	Off int64
+	BuffLen int
 }
 type FileRead_output struct {
 	Dest []byte
@@ -64,7 +67,8 @@ type ServerFs struct {
 } 
 func NewServerFs(directory string) ServerFs {
 	// register used datatype
-    fs := pathfs.NewLoopbackFileSystem(directory)
+	gob.Register(&CustomReadResultData{})
+    fs := NewCustomLoopbackFileSystem(directory)
 	return ServerFs{fs: fs}
 }
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error { 
@@ -84,6 +88,7 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 }
 
 func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) error {
+	output.Dest = make([]byte, input.BuffLen) // recreates the buffer on server for client/server or replaces orignal for local
 	output.ReadResult, output.Status = self.openFiles[input.FileId].Read(output.Dest, input.Off)
 	return nil
 }
@@ -91,36 +96,3 @@ func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) e
 
 // assert that ServerFs implements BackendFs
 var _ BackendFs = new(ServerFs)
-
-
-
-type CustomLoopbackFileSystem struct {
-	pathfs.FileSystem
-}
-func NewCustomLoopbackFileSystem(directory string) CustomLoopbackFileSystem {
-	return CustomLoopbackFileSystem{FileSystem: pathfs.NewLoopbackFileSystem(directory)}
-}
-// overide read so that it does NOT use ReadResultFd but uses ReadResultData
-// may need to rewrite the entire thing because do not have access to the loop backs lock
-func (f *CustomLoopbackFileSystem) Read(buf []byte, off int64) (res fuse.ReadResult, code fuse.Status) {
-	// f.lock.Lock()
-
-	sz := len(buf)
-	if len(buf) < sz {
-		sz = len(buf)
-	}
-
-	n, err := syscall.Pread(int(r.Fd), buf[:sz], off)
-	if err == io.EOF {
-		err = nil
-	}
-
-	if n < 0 {
-		n = 0
-	}
-
-	r := ReadResultData(buf[:n])
-
-	// f.lock.Unlock()
-	return r, ToStatus(err)
-}
