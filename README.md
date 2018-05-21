@@ -1,5 +1,7 @@
 This code allows a file system on one machine be hosted on a port so that another process can use the file system with a FUSE mount.  
 
+install go-fuse `go get github.com/hanwen/go-fuse/...`
+
 ## Usage
 compile and install with `make`
 
