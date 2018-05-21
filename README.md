@@ -5,6 +5,8 @@ install go-fuse `go get github.com/hanwen/go-fuse/...`
 ## Usage
 compile and install with `make` (NOTE: repository root folder must be named "proj")
 
+MOUNTPOINT should be a folder, but can be named whatever.
+
 To launch a server, MOUNTPOINT will be the filesystem sent,
 ```
 fs-server MOUNTPOINT
@@ -12,13 +14,13 @@ fs-server MOUNTPOINT
 
 To launch a client, MOUNTPOINT will be where the filesystem received,
 ```
-fs-client MOUNTPOINT
+fs-front MOUNTPOINT
 ```
 To unmount a client, stop the `fs-client` and `fusermount -u MOUNTPOINT`.
 
 
 ## Details 
-High level description of client/sever layers
+High level description of client/server layers
 
 ### frontend
 The frontend is a `pathfs.FileSystem` that is used as the FUSE interface.  Its file system is intialized with a `pathfs.defaultFileSystem` so that it will return errors for all the non override functions.  The frontend overides the `FileSystem` interface functions so that they use the `BackendFs`. 
@@ -33,5 +35,5 @@ The frontend is a `pathfs.FileSystem` that is used as the FUSE interface.  Its f
 ### loopback
 `CustomLoopbackFileSystem` is a FUSE filesystem that shunts all request to an underlying file system. (It does not need to be a fuse file system but this had all the implemented syscalls it made sense to use.)
 
-### msic
+### misc
 `CustomLoopbackFile` and `CustomReadResultData` are %99 the same as their respective structs in the go-fuse repo but were needed to be modified slightly so that file descritiors that make syscalls are not sent to a frontend.  `FrontendFile` is a file descriptor sent to a front end which forwards requests through the BackendFs so that operations are performed on the server 
