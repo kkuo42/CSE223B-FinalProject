@@ -5,8 +5,6 @@ install go-fuse `go get github.com/hanwen/go-fuse/...`
 ## Usage
 compile and install with `make` (NOTE: repository root folder must be named "proj")
 
-MOUNTPOINT should be a folder, but can be named whatever.
-
 To launch a server, MOUNTPOINT will be the filesystem sent,
 ```
 fs-server MOUNTPOINT
