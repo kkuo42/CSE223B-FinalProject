@@ -231,8 +231,10 @@ func (f *CustomLoopbackFile) Read(buf []byte, off int64) (res fuse.ReadResult, c
 
 	// r := fuse.ReadResultFd(f.File.Fd(), off, len(buf))
 	
-	/* replacing the call to ReadResultFd with ReadResultData code so that it
-		it can be passed via RPC */
+	/* 
+	replacing the call to ReadResultFd with ReadResultData code so the buffer
+	is passed via RPC 
+	*/
 
 	sz := len(buf)
 	if len(buf) < sz {

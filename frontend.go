@@ -10,12 +10,13 @@ import (
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 )
 /*
-the frontend that the client uses with FUSE
+the frontend that the client uses with go-fuse
 
 it is initialized with pathfs.NewDefaultFileSystem() in fs-client so that it 
 implements a FileSystem that returns ENOSYS for every operation that is not 
 overrided
 */
+// check https://github.com/hanwen/go-fuse/blob/master/fuse/pathfs/api.go for interface to implement
 type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs

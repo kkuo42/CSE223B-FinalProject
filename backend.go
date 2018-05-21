@@ -59,14 +59,12 @@ type BackendFs interface {
 	FileRead(input *FileRead_input, output *FileRead_output) error
 }
 
-// TODO: (maybe?) implement a custom pathfs.FileSystem, fs is currently initialized with a loopback in fs-server/main.go
-// check https://github.com/hanwen/go-fuse/blob/master/fuse/pathfs/api.go for interface to implement
 type ServerFs struct {
 	fs pathfs.FileSystem
 	openFiles []nodefs.File
 } 
 func NewServerFs(directory string) ServerFs {
-	// register used datatype
+	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
     fs := NewCustomLoopbackFileSystem(directory)
 	return ServerFs{fs: fs}

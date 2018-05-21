@@ -14,7 +14,7 @@ import (
 func main() {
     flag.Parse()
     if len(flag.Args()) < 1 {
-        log.Fatal("Usage:\n  fs-server MOUNTPOINT")
+        log.Fatal("Usage:\n  fs-server SHAREPOINT")
     }
 
     // setup loopback filesystem

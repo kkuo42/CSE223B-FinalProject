@@ -11,6 +11,7 @@ type ClientFs struct {
 }
 
 func NewClientFs(addr string) ClientFs {
+	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
 	return ClientFs{addr: addr}
 }
