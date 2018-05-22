@@ -38,6 +38,21 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 	return nil
 }
 
+func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
+	output.Status = self.fs.Rename(input.Old, input.New, input.Context)
+	return nil
+}
+
+func (self *ServerFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
+	output.Status = self.fs.Mkdir(input.Name, input.Mode, input.Context)
+	return nil
+}
+
+func (self *ServerFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
+	output.Status = self.fs.Rmdir(input.Name, input.Context)
+	return nil
+}
+
 func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 	output.Status = self.fs.Unlink(input.Name, input.Context)
 	return nil

@@ -163,6 +163,63 @@ func (self *ClientFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 	return e
 }
 
+func (self *ClientFs) Rename(input *Rename_input, output *Rename_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.Rename", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Rename", input, output)
+		}
+	}
+
+	return e
+}
+
+func (self *ClientFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.Mkdir", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Mkdir", input, output)
+		}
+	}
+
+	return e
+}
+
+func (self *ClientFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.Rmdir", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Rmdir", input, output)
+		}
+	}
+
+	return e
+}
+
 
 // assert that ClientFs implements BackendFs
 var _ BackendFs = new(ClientFs)
