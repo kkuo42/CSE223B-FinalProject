@@ -1,7 +1,7 @@
 #!/bin/bash
 #install go
 sudo apt-get update
-sudo apt-get install golang-go -y 
+sudo apt-get install golang-go openjdk-8-jre-headless -y 
 mkdir $HOME/go
 
 #install zookeeper
@@ -21,9 +21,9 @@ touch .bash_aliases
 echo "alias runserver=\"fs-server $HOME/servermount\"" >> .bash_aliases
 echo "alias runclient=\"fs-front $HOME/clientmount\"" >> .bash_aliases
 echo "alias proj=\"cd $HOME/go/src/proj\"" >> .bash_aliases
-source .bash_aliases
-source .profile
-source .bashrc
+source ~/.bash_aliases
+source ~/.profile
+source ~/.bashrc
 
 # prep source code
 go get github.com/hanwen/go-fuse/...
