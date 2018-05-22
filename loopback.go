@@ -230,7 +230,7 @@ func (f *CustomLoopbackFile) Read(buf []byte, off int64) (res fuse.ReadResult, c
 	// synchronizing the open/write/close.
 
 	// r := fuse.ReadResultFd(f.File.Fd(), off, len(buf))
-	
+
 	/* 
 	replacing the call to ReadResultFd with ReadResultData code so the buffer
 	is passed via RPC 

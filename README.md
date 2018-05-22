@@ -1,11 +1,12 @@
 This code allows a file system on one machine be hosted on a port so that another process can use the file system with a FUSE mount. 
 
 install go-fuse `go get github.com/hanwen/go-fuse/...`
+install go-zookeeper `go get github.com/samuel/go-zookeeper/...`
 
 ## Usage
 compile and install with `make` (NOTE: repository root folder must be named "proj")
 
-To launch a server, MOUNTPOINT will be the filesystem sent,
+To launch a server, SHAREPOINT will be the filesystem sent,
 ```
 fs-server SHAREPOINT
 ```
