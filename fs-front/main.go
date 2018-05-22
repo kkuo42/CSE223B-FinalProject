@@ -12,6 +12,10 @@ import (
     "github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
+func shutdown() {
+
+}
+
 func main() {
 	// TODO note even though nodes are ephemeral we may get a response from a dead node,
 	// if a node stops responding for a while and comes back online it needs to re register
@@ -26,9 +30,6 @@ func main() {
 
     // setup frontend filesystem
     frontend := proj.NewFrontendRemotelyBacked(zkaddr) // remote
-    // dir := "from"
-    // frontend := proj.NewFrontendLocalyBacked(dir)    // local
-    // frontend := pathfs.NewLoopbackFileSystem(dir)    // local provided loopback
 
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
 

@@ -78,7 +78,7 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 	fmt.Println("Unlink: "+input.Name)
 	output.Status = self.fs.Unlink(input.Name, input.Context)
 
-	err := self.zkClient.Delete("/"+input.Name, -1)
+	err := self.zkClient.Delete("/data/"+input.Name, -1)
 
 	if err != nil {
 		panic(err)
@@ -89,7 +89,7 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create: "+input.Path)
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
-	_, err := self.zkClient.Create("/"+input.Path, []byte(self.addr), int32(0), zk.WorldACL(zk.PermAll))
+	_, err := self.zkClient.Create("/data/"+input.Path, []byte(self.addr), int32(0), zk.WorldACL(zk.PermAll))
 
 	if err != nil {
 		panic(err)

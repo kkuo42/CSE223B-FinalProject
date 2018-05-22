@@ -5,6 +5,7 @@ import (
 	"time"
 	"fmt"
 	"strings"
+	"math/rand"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -24,7 +25,6 @@ interface to implement
 type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs
-	currBackend string
 	backends map[string]string
 }
 
@@ -32,16 +32,16 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
     fs := pathfs.NewDefaultFileSystem()
 
     // make zkclient, connect and list connected backends
-    // TODO this needs to be a goroutine that does ChildrenW that
-    // then watches if a node goes down and if it is this one then fix
-    // TODO picks first zkaddr
-    zkClient, _, err := zk.Connect(strings.Split(zkaddrs[0], ","), time.Second)
+    zkClient, _, err := zk.Connect(strings.Split(zkaddrs[rand.Intn(len(zkaddrs))], ","), time.Second)
 
     // Just panic for now, should fix later
     if err != nil {
 	    log.Fatalf("error connecting to zkserver\n")
 	    panic(err)
     }
+
+    // TODO this needs to be a goroutine that does ChildrenW that
+    // then watches if a node goes down and if it is this one then fix
     addrs, _, e := zkClient.Children("/alive")
     if e != nil {
 	    log.Fatalf("error getting alive nodes\n")
@@ -51,20 +51,16 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 	    log.Fatalf("ERROR: no backends")
     }
 
-
-    // TODO naive implementation. just picks first server.. need lunch
-    clientFs := NewClientFs(addrs[0])
-    clientFs.Connect()
+    // TODO naive implementation. just picks random server..
+    clientFs := NewClientFs(addrs[rand.Intn(len(addrs))])
+    e = clientFs.Connect()
+    if e != nil {
+	log.Fatalf("error connecting to backend. try another one?")
+	panic(e)
+    }
     return Frontend{FileSystem: fs, backendFs: &clientFs}
 }
 
-/*
-func NewFrontendLocalyBacked(directory string) Frontend {
-	fs := pathfs.NewDefaultFileSystem()
-    serverFs := NewServerFs(directory)
-    return Frontend{FileSystem: fs, backendFs: &serverFs}
-}
-*/
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
 	input := &Open_input{Name: name, Flags: flags, Context: context}
 	output := &Open_output{}
