@@ -86,6 +86,45 @@ func (self *ClientFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 	return e	
 }
 
+func (self *ClientFs) Unlink(input *Unlink_input, output *Unlink_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.Unlink", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Unlink", input, output)
+		}
+	}
+
+	return e
+}
+
+func (self *ClientFs) Create(input *Create_input, output *Create_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.Create", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Create", input, output)
+		}
+	}
+
+	return e
+}
+
+
 func (self *ClientFs) FileRead(input *FileRead_input, output *FileRead_output) error {
 	e := self.Connect()
 	if e != nil {
@@ -104,5 +143,26 @@ func (self *ClientFs) FileRead(input *FileRead_input, output *FileRead_output) e
 
 	return e
 }
+
+func (self *ClientFs) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.FileWrite", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.FileWrite", input, output)
+		}
+	}
+
+	return e
+}
+
+
 // assert that ClientFs implements BackendFs
 var _ BackendFs = new(ClientFs)

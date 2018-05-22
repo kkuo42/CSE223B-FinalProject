@@ -38,9 +38,27 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 	return nil
 }
 
+func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
+	output.Status = self.fs.Unlink(input.Name, input.Context)
+	return nil
+}
+
+func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
+	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
+	self.openFiles = append(self.openFiles, loopbackFile)
+	output.FileId = len(self.openFiles)-1
+	output.Status = status
+	return nil
+}
+
 func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) error {
 	output.Dest = make([]byte, input.BuffLen) // recreates the buffer on server for client/server or replaces orignal for local
 	output.ReadResult, output.Status = self.openFiles[input.FileId].Read(output.Dest, input.Off)
+	return nil
+}
+
+func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
+	output.Written, output.Status = self.openFiles[input.FileId].Write(input.Data, input.Off)
 	return nil
 }
 
