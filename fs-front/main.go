@@ -4,6 +4,9 @@ import (
     "flag"
     "log"
 
+    "os"
+    "os/signal"
+
     "proj"
     "github.com/hanwen/go-fuse/fuse/nodefs"
     "github.com/hanwen/go-fuse/fuse/pathfs"
@@ -11,12 +14,16 @@ import (
 
 func main() {
     flag.Parse()
+    addr := "localhost:9898"
     if len(flag.Args()) < 1 {
-        log.Fatal("Usage:\n  fs-front MOUNTPOINT")
+	    log.Fatal("Usage:\n  fs-front <MOUNTPOINT> <Addr: Optional>")
     }
+    if len(flag.Args()) == 2 {
+	    addr = flag.Arg(1)
+    }
+    mountpoint := flag.Arg(0)
 
     // setup frontend filesystem
-    addr := "localhost:9898"
     frontend := proj.NewFrontendRemotelyBacked(addr) // remote
     // dir := "from"
     // frontend := proj.NewFrontendLocalyBacked(dir)    // local
@@ -25,11 +32,21 @@ func main() {
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
 
     // mount
-    server, _, err := nodefs.MountRoot(flag.Arg(0), nfs.Root(), nil)
+    server, _, err := nodefs.MountRoot(mountpoint, nfs.Root(), nil)
     if err != nil {
         log.Fatalf("Mount fail: %v\n", err)
     }
-    
-    log.Printf("filesystem store serving to directory \"%s\"", flag.Arg(0))
+
+    // before serving catch ^C and cleanly bail out
+    c := make(chan os.Signal, 1)
+    signal.Notify(c, os.Interrupt)
+    go func(){
+	// signal is a ^C, unmount to shutdown cleanly
+	<-c
+	log.Printf("unmounting %v", mountpoint)
+	server.Unmount()
+    }()
+
+    log.Printf("filesystem store serving to directory \"%s\" on %v", mountpoint, addr)
     server.Serve()
 }
