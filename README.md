@@ -25,15 +25,16 @@ Two directories exist, `from` and `to`. There are files in the "from" directory 
 ## Details 
 High level description of client/server layers
 
+### BackendFS
+`BackendFs` is the RPC interface.
+
 ### frontend
 The `Frontend` is a `pathfs.FileSystem` and `FrontendFile` is a `nodefs.File`. These are used as to implementet the abstracted `go-fuse` FUSE interface. The `Frontend` file system is intialized with a `pathfs.defaultFileSystem` so that it will return errors for all the non override functions. The frontend overides the `FileSystem` interface functions so that they use the `BackendFs`. 
 
 ### client
 `ClientFs` implements `BackendFs` such that all calls are forwarded to a server using RPC
 
-### backend
-`BackendFs` is the RPC interface.
-
+### server
 `ServerFs` implements `BackendFs` and uses the `CustomLoopbackFileSystem` to make system calls on the servers disk
 
 ### loopback

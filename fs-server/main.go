@@ -18,8 +18,9 @@ func main() {
     }
 
     // setup loopback filesystem
-    nfs := proj.NewServerFs(flag.Arg(0))
     addr := "localhost:9898"
+	zkaddr := "localhost:2181"
+    nfs := proj.NewServerFs(flag.Arg(0), addr, zkaddr)
 
 
     // setup rpc server
