@@ -32,7 +32,7 @@ func pubIP() string {
 
 func main() {
     flag.Parse()
-    addr := "localhost:9898"
+    addr := ":9898"
 
     if len(flag.Args()) < 1 {
         log.Fatal("Usage:\n  fs-server SHAREPOINT")
