@@ -2,6 +2,7 @@ package proj
 
 import (
 	"fmt"
+	"log"
 	"time"
 	"strings"
     "encoding/gob"
@@ -17,15 +18,23 @@ type ServerFs struct {
 	openFiles []nodefs.File
 }
 
-func NewServerFs(directory string, addr string, zkaddr string) ServerFs {
+func NewServerFs(directory, addr, pubaddr, zkaddr string) ServerFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
-    fs := NewCustomLoopbackFileSystem(directory)
+	fs := NewCustomLoopbackFileSystem(directory)
 
 	zkClient, _, err := zk.Connect(strings.Split(zkaddr, ","), time.Second)
 	// Just panic for now, should fix later
 	if err != nil {
+		log.Fatalf("error connecting to zkserver\n")
 		panic(err)
+	}
+
+	// if there is no error then we want to register that this server is alive
+	_, e := zkClient.Create("/alive/"+pubaddr, []byte(pubaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+	if e != nil {
+		log.Fatalf("error creating node in zkserver")
+		panic(e)
 	}
 
 	return ServerFs{addr: addr, fs: fs, zkClient: zkClient}
