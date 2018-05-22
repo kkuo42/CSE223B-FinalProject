@@ -77,6 +77,35 @@ type Create_output struct {
 	Status fuse.Status
 }
 
+type Rename_input struct {
+	Old string
+	New string
+	Context *fuse.Context
+}
+
+type Rename_output struct {
+	Status fuse.Status
+}
+
+type Mkdir_input struct {
+	Name string
+	Mode uint32
+	Context *fuse.Context
+}
+
+type Mkdir_output struct {
+	Status fuse.Status
+}
+
+type Rmdir_input struct {
+	Name string
+	Context *fuse.Context
+}
+
+type Rmdir_output struct {
+	Status fuse.Status
+}
+
 type BackendFs interface {
 	// wrappers for pathfs loopback file system calls
 	Open(input *Open_input, output *Open_output) error
@@ -84,6 +113,9 @@ type BackendFs interface {
 	GetAttr(input *GetAttr_input, output *GetAttr_output) error
 	Unlink(intput *Unlink_input, output *Unlink_output) error
 	Create(intput *Create_input, output *Create_output) error
+	Rename(input *Rename_input, output *Rename_output) error
+	Mkdir(input *Mkdir_input, output *Mkdir_output) error
+	Rmdir(input *Rmdir_input, output *Rmdir_output) error
 
 	// wrappers for file calls
 	FileRead(input *FileRead_input, output *FileRead_output) error

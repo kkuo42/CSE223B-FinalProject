@@ -92,6 +92,42 @@ func (self *Frontend) Unlink(name string, context *fuse.Context) (code fuse.Stat
 	return output.Status
 }
 
+func (self *Frontend) Rename(oldName string, newName string, context *fuse.Context) (code fuse.Status) {
+	input := &Rename_input{Old: oldName, New: newName, Context: context}
+	output := &Rename_output{}
+
+	e := self.backendFs.Rename(input, output)
+
+	if e != nil {
+		return fuse.ENOSYS
+	}
+	return output.Status
+}
+
+func (self *Frontend) Mkdir(name string, mode uint32, context *fuse.Context) fuse.Status {
+	input := &Mkdir_input{Name: name, Mode: mode, Context: context}
+	output := &Mkdir_output{}
+
+	e := self.backendFs.Mkdir(input, output)
+
+	if e != nil {
+		return fuse.ENOSYS
+	}
+	return output.Status
+}
+
+func (self *Frontend) Rmdir(name string, context *fuse.Context) (code fuse.Status) {
+	input := &Rmdir_input{Name: name, Context: context}
+	output := &Rmdir_output{}
+
+	e := self.backendFs.Rmdir(input, output)
+
+	if e != nil {
+		return fuse.ENOSYS
+	}
+	return output.Status
+}
+
 func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
 	input := &Create_input{path, flags, mode, context}
 	output := &Create_output{}
