@@ -29,11 +29,14 @@ func NewFrontendRemotelyBacked(addr string) Frontend {
     clientFs.Connect()
     return Frontend{FileSystem: fs, backendFs: &clientFs}
 }
+
+/*
 func NewFrontendLocalyBacked(directory string) Frontend {
 	fs := pathfs.NewDefaultFileSystem()
     serverFs := NewServerFs(directory)
     return Frontend{FileSystem: fs, backendFs: &serverFs}
 }
+*/
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
 	input := &Open_input{Name: name, Flags: flags, Context: context}
 	output := &Open_output{}

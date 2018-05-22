@@ -23,8 +23,9 @@ func main() {
     }
 
     // setup loopback filesystem
-    sharepoint := flag.Arg(0)
-    nfs := proj.NewServerFs(sharepoint)
+    addr := "localhost:9898"
+	zkaddr := "localhost:2181"
+    nfs := proj.NewServerFs(flag.Arg(0), addr, zkaddr)
 
     // setup rpc server
     server := rpc.NewServer()

@@ -1,22 +1,34 @@
 package proj
 
 import (
+	"fmt"
+	"time"
+	"strings"
     "encoding/gob"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
+	"github.com/samuel/go-zookeeper/zk"
 )
 
-
 type ServerFs struct {
+	addr string
 	fs pathfs.FileSystem
+	zkClient *zk.Conn
 	openFiles []nodefs.File
 }
 
-func NewServerFs(directory string) ServerFs {
+func NewServerFs(directory string, addr string, zkaddr string) ServerFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
     fs := NewCustomLoopbackFileSystem(directory)
-	return ServerFs{fs: fs}
+
+	zkClient, _, err := zk.Connect(strings.Split(zkaddr, ","), time.Second)
+	// Just panic for now, should fix later
+	if err != nil {
+		panic(err)
+	}
+
+	return ServerFs{addr: addr, fs: fs, zkClient: zkClient}
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
@@ -54,12 +66,26 @@ func (self *ServerFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 }
 
 func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
+	fmt.Println("Unlink: "+input.Name)
 	output.Status = self.fs.Unlink(input.Name, input.Context)
+
+	err := self.zkClient.Delete("/"+input.Name, -1)
+
+	if err != nil {
+		panic(err)
+	}
 	return nil
 }
 
 func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
+	fmt.Println("Create: "+input.Path)
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
+	_, err := self.zkClient.Create("/"+input.Path, []byte(self.addr), int32(0), zk.WorldACL(zk.PermAll))
+
+	if err != nil {
+		panic(err)
+	}
+
 	self.openFiles = append(self.openFiles, loopbackFile)
 	output.FileId = len(self.openFiles)-1
 	output.Status = status
