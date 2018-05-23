@@ -35,6 +35,7 @@ type GetAttr_output struct {
 }
 
 type FileRead_input struct {
+	Path string
 	FileId int
 	Off int64
 	BuffLen int
@@ -46,9 +47,11 @@ type FileRead_output struct {
 }
 
 type FileWrite_input struct {
+	Path string
 	FileId int
 	Data []byte
 	Off  int64
+	Context *fuse.Context
 }
 
 type FileWrite_output struct {

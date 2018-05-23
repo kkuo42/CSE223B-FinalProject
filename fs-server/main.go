@@ -9,11 +9,30 @@ import (
     "net/rpc"
     "net"
     "net/http"
+    "io/ioutil"
+    "strings"
 )
+
+func pubIP() string {
+	// query api to get public ip
+	url := "https://api.ipify.org?format=text"
+	r, e := http.Get(url)
+	if e != nil {
+		log.Fatalf("error getting public ip")
+		panic(e)
+	}
+	defer r.Body.Close()
+	ip, e := ioutil.ReadAll(r.Body)
+	if e != nil {
+		log.Fatalf("error getting public ip")
+		panic(e)
+	}
+	return string(ip)
+}
 
 func main() {
     flag.Parse()
-    addr := "localhost:9898"
+    addr := ":9898"
 
     if len(flag.Args()) < 1 {
         log.Fatal("Usage:\n  fs-server SHAREPOINT")
@@ -22,10 +41,12 @@ func main() {
 	addr = flag.Arg(1)
     }
 
+    pubaddr := pubIP()+":"+strings.Split(addr, ":")[1]
+    log.Println("public addr", pubaddr)
     // setup loopback filesystem
-	sharepoint := flag.Arg(0)
-	zkaddr := "localhost:2181"
-    nfs := proj.NewServerFs(sharepoint, addr, zkaddr)
+    zkaddr := "54.197.196.191:2181"
+    sharepoint := flag.Arg(0)
+    nfs := proj.NewServerFs(sharepoint, addr, pubaddr, zkaddr)
 
     // setup rpc server
     server := rpc.NewServer()

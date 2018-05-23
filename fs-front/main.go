@@ -13,21 +13,19 @@ import (
 )
 
 func main() {
+	// TODO note even though nodes are ephemeral we may get a response from a dead node,
+	// if a node stops responding for a while and comes back online it needs to re register
+	// with zookeeper
     flag.Parse()
-    addr := "localhost:9898"
     if len(flag.Args()) < 1 {
-	    log.Fatal("Usage:\n  fs-front <MOUNTPOINT> <Addr: Optional>")
-    }
-    if len(flag.Args()) == 2 {
-	    addr = flag.Arg(1)
+	    log.Fatal("Usage:\n  fs-front <MOUNTPOINT>")
     }
     mountpoint := flag.Arg(0)
 
+    zkaddr := []string{"54.197.196.191:2181"}
+
     // setup frontend filesystem
-    frontend := proj.NewFrontendRemotelyBacked(addr) // remote
-    // dir := "from"
-    // frontend := proj.NewFrontendLocalyBacked(dir)    // local
-    // frontend := pathfs.NewLoopbackFileSystem(dir)    // local provided loopback
+    frontend := proj.NewFrontendRemotelyBacked(zkaddr) // remote
 
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
 
@@ -45,8 +43,9 @@ func main() {
 	<-c
 	log.Printf("unmounting %v", mountpoint)
 	server.Unmount()
+	os.Exit(1)
     }()
 
-    log.Printf("filesystem store serving to directory \"%s\" on %v", mountpoint, addr)
+    log.Printf("filesystem store serving to directory \"%s\n", mountpoint)
     server.Serve()
 }
