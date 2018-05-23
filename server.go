@@ -2,22 +2,17 @@ package proj
 
 import (
 	"fmt"
-	"log"
-	"time"
-	"strings"
 	"encoding/gob"
-	"encoding/json"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
-	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
-	"github.com/samuel/go-zookeeper/zk"
+	"github.com/hanwen/go-fuse/fuse"
 )
 
 type ServerFs struct {
 	addr string
 	pubaddr string
 	fs pathfs.FileSystem
-	zkClient *zk.Conn
+	kc *KeeperClient
 	openFiles []nodefs.File
 }
 
@@ -25,22 +20,13 @@ func NewServerFs(directory, addr, pubaddr, zkaddr string) ServerFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
 	fs := NewCustomLoopbackFileSystem(directory)
-
-	zkClient, _, err := zk.Connect(strings.Split(zkaddr, ","), time.Second)
-	// Just panic for now, should fix later
-	if err != nil {
-		log.Fatalf("error connecting to zkserver\n")
-		panic(err)
-	}
-
-	// if there is no error then we want to register that this server is alive
-	_, e := zkClient.Create("/alive/"+pubaddr, []byte(pubaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+	kc := NewKeeperClient(zkaddr, pubaddr)
+	e := kc.Init()
 	if e != nil {
-		log.Fatalf("error creating node in zkserver")
 		panic(e)
 	}
 
-	return ServerFs{addr: addr, pubaddr: pubaddr, fs: fs, zkClient: zkClient}
+	return ServerFs{addr: addr, pubaddr: pubaddr, fs: fs, kc: kc}
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
@@ -56,21 +42,12 @@ func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 	// use the keeper to list all the files in the directory
 	fmt.Println("opening dir:", input.Name)
 	output.Stream, output.Status = self.fs.OpenDir(input.Name, input.Context)
-	files, _, e := self.zkClient.Children("/data")
-
-	fmt.Println(files)
+	entries, e := self.kc.GetChildrenAttributes(input.Name)
 	if e != nil {
-		panic(e)
+		return e
 	}
 
-	// add the keeper files to the output stream
-	fileEntries := []fuse.DirEntry{}
-	for _, f := range files {
-		fileEntries = append(fileEntries, fuse.DirEntry{Name: f})
-	}
-
-	output.Stream = fileEntries
-
+	output.Stream = entries
 	return nil
 }
 
@@ -78,13 +55,11 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 	output.Attr, output.Status = self.fs.GetAttr(input.Name, input.Context)
 	if output.Attr == nil {
 		// fetch the attr from zk
-		data, _, e := self.zkClient.Get("/data/" + input.Name)
+		kmeta, e := self.kc.Get(input.Name)
 		if e != nil {
-			// do nothing for now, should crash
+			// do nothing
 		}
-		var keeperdata Keeper
-		e = json.Unmarshal(data, &keeperdata)
-		output.Attr = &keeperdata.Attr
+		output.Attr = &kmeta.Attr
 	}
 	fmt.Println(input.Name, output.Attr)
 	return nil
@@ -95,17 +70,19 @@ func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
 	fmt.Println(output.Status)
 	a, _ := self.fs.GetAttr(input.New, input.Context)
 
-	keeperdata := Keeper{Attr: *a, Primary: self.pubaddr}
-	d, _ := json.Marshal(&keeperdata)
-
-	_, e := self.zkClient.Create("/data/"+input.New, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+	e := self.kc.Create(input.New, *a)
 	if e != nil {
 		// do nothing for now
 		fmt.Println("mv error", e)
-		return nil
+		return e
 	}
 
-	e = self.zkClient.Delete("/data/"+input.Old, -1)
+	e = self.kc.Remove(input.Old)
+	if e != nil {
+		// do nothing for now
+		fmt.Println("mv error", e)
+		return e
+	}
 	return nil
 }
 
@@ -114,10 +91,7 @@ func (self *ServerFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	// get attributes after make 
 	a, _ := self.fs.GetAttr(input.Name, input.Context)
 
-	keeperdata := Keeper{Attr: *a, Primary: self.pubaddr}
-	d, _ := json.Marshal(&keeperdata)
-
-	_, e := self.zkClient.Create("/data/"+input.Name, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+	e := self.kc.Create(input.Name, *a)
 	if e != nil {
 		return e
 	}
@@ -126,52 +100,39 @@ func (self *ServerFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 
 func (self *ServerFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 	output.Status = self.fs.Rmdir(input.Name, input.Context)
-
-	e := self.zkClient.Delete("/data/"+input.Name, -1)
+	e := self.kc.RemoveDir(input.Name)
 
 	if e != nil {
-		panic(e)
+		return e
 	}
+
 	return nil
 }
 
 func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 	fmt.Println("Unlink: "+input.Name)
 	output.Status = self.fs.Unlink(input.Name, input.Context)
+	e := self.kc.Remove(input.Name)
 
-	err := self.zkClient.Delete("/data/"+input.Name, -1)
-
-	if err != nil {
-		panic(err)
+	if e != nil {
+		return e
 	}
+
 	return nil
 }
 
 func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create:", input.Path)
-	// before creation check if the file already exists, if it does
-	// then we should move that file to this server and TODO add as secondary
-	data, _, e := self.zkClient.Get("/data/"+input.Path)
-	// if the keeper returns an error the node doesnt exist
+	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
+
+	// TODO after create check if success or fail
+	e := self.kc.Create(input.Path, fuse.Attr{})
 	if e != nil {
-		keeperfile := Keeper{Primary: self.pubaddr}
-		d, e := json.Marshal(&keeperfile)
-		s, e := self.zkClient.Create("/data/"+input.Path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
-		loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
-		fmt.Println("create res:",s)
-
-		if e != nil {
-			panic(e)
-		}
-
-		self.openFiles = append(self.openFiles, loopbackFile)
-		output.FileId = len(self.openFiles)-1
-		output.Status = status
-	} else {
-		// the node exists so we will go contact that server
-		fmt.Println(data)
-		return fmt.Errorf("cannot create a file that doesnt exist, try to read it now\n")
+		return e
 	}
+	self.openFiles = append(self.openFiles, loopbackFile)
+	output.FileId = len(self.openFiles)-1
+	output.Status = status
 	return nil
 }
 
@@ -184,16 +145,22 @@ func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) e
 func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
 	fmt.Println("Write:", input.FileId)
 	output.Written, output.Status = self.openFiles[input.FileId].Write(input.Data, input.Off)
-
-	a, _ := self.fs.GetAttr(input.Path, input.Context)
+	fmt.Println("fs write")
 
 	// after we have written the file we will go an update the node that we created/modified
-	data, _, _ := self.zkClient.Get("/data/"+input.Path)
-	var keeperfile Keeper
-	_ = json.Unmarshal(data, &keeperfile)
-	keeperfile.Attr = *a
-	m, _ := json.Marshal(&keeperfile)
-	_, _ = self.zkClient.Set("/data/"+input.Path, m, -1)
+	a, _ := self.fs.GetAttr(input.Path, input.Context)
+	kmeta, e := self.kc.Get(input.Path)
+	if e != nil {
+		return e
+	}
+	fmt.Println("write get")
+
+	kmeta.Attr = *a
+	e = self.kc.Set(input.Path, kmeta)
+	if e != nil {
+		return e
+	}
+	fmt.Println("end of write")
 	return nil
 }
 

@@ -99,7 +99,6 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 	output := &GetAttr_output{}
 
 	e := self.backendFs.GetAttr(input, output)
-	fmt.Println("output attr:", output)
 
 	if e != nil {
 	    log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
