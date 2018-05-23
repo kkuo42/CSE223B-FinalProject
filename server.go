@@ -10,23 +10,22 @@ import (
 
 type ServerFs struct {
 	addr string
-	pubaddr string
 	fs pathfs.FileSystem
 	kc *KeeperClient
 	openFiles []nodefs.File
 }
 
-func NewServerFs(directory, addr, pubaddr, zkaddr string) ServerFs {
+func NewServerFs(directory, addr, zkaddr string) ServerFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
 	fs := NewCustomLoopbackFileSystem(directory)
-	kc := NewKeeperClient(zkaddr, pubaddr)
+	kc := NewKeeperClient(zkaddr, addr)
 	e := kc.Init()
 	if e != nil {
 		panic(e)
 	}
 
-	return ServerFs{addr: addr, pubaddr: pubaddr, fs: fs, kc: kc}
+	return ServerFs{addr: addr, fs: fs, kc: kc}
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
@@ -61,7 +60,6 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 		}
 		output.Attr = &kmeta.Attr
 	}
-	fmt.Println(input.Name, output.Attr)
 	return nil
 }
 

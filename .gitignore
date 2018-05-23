@@ -1,3 +1,9 @@
 from
 to
 .*
+*log.txt
+*.out
+zkdata
+zookeeper-3.4.12
+from*
+to*

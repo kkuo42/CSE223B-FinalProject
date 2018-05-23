@@ -36,31 +36,25 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 
     // Just panic for now, should fix later
     if err != nil {
-	    log.Fatalf("error connecting to zkserver\n")
-	    panic(err)
+	    log.Fatalf("error connecting to zkserver: %v\n", err)
     }
 
     // TODO this needs to be a goroutine that does ChildrenW that
     // then watches if a node goes down and if it is this one then fix
     addrs, _, e := zkClient.Children("/alive")
     if e != nil {
-	    log.Fatalf("error getting alive nodes\n")
-	    panic(err)
+	    log.Fatalf("error getting alive nodes: %v\n", e)
     }
     if len(addrs) == 0 {
 	    log.Fatalf("ERROR: no backends")
     }
 
-    // TODO naive implementation. just picks random server..
-    randback := rand.Intn(len(addrs))
-    //clientFs := NewClientFs(addrs[randback])
-    //local test
-    clientFs := NewClientFs("localhost:9898")
-    fmt.Println(randback)
+    // TODO naive implementation. just picks most recent server..
+    // randback := rand.Intn(len(addrs))
+    clientFs := NewClientFs(addrs[len(addrs)-1])
     e = clientFs.Connect()
     if e != nil {
-	log.Fatalf("error connecting to backend. try another one?")
-	panic(e)
+		log.Fatalf("error connecting to backend. try another one?, error: %v",e)
     }
     return Frontend{FileSystem: fs, backendFs: &clientFs}
 }
