@@ -34,15 +34,18 @@ func main() {
     // parse args
     flag.Parse()
     if len(flag.Args()) != 3 {
-        log.Fatal("Usage:\n  fs-server <SHAREPOINT> <SEVERIP> <ZOOKEEPERIP>")
+        log.Fatal("Usage:\n  fs-server <SHAREPOINT> <SERVERIP> <ZOOKEEPERIP>")
     }
     sharepoint := flag.Arg(0)
     addr := flag.Arg(1)
+	port := strings.Split(addr, ":")[1]
     zkaddr := flag.Arg(2)
-    port := strings.Split(addr, ":")[1]
-    pubaddr := pubIP()+":"+port
+	if strings.Split(addr, ":")[0] != "localhost" {
+		addr = pubIP()+":"+port
+	}
+
     // setup loopback filesystem
-    nfs := proj.NewServerFs(sharepoint, pubaddr, zkaddr)
+    nfs := proj.NewServerFs(sharepoint, addr, zkaddr)
 
     // setup rpc server
     server := rpc.NewServer()

@@ -1,9 +1,6 @@
-from
-to
 .*
-*log.txt
+data
+logs
 *.out
 zkdata
 zookeeper-3.4.12
-from*
-to*
