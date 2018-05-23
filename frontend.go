@@ -51,7 +51,7 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 
     // TODO naive implementation. just picks most recent server..
     // randback := rand.Intn(len(addrs))
-    clientFs := NewClientFs(addrs[0])
+    clientFs := NewClientFs(addrs[len(addrs)-1])
     e = clientFs.Connect()
     if e != nil {
 		log.Fatalf("error connecting to backend. try another one?, error: %v",e)
