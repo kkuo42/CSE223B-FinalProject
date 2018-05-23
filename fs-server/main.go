@@ -10,6 +10,7 @@ import (
     "net"
     "net/http"
     "io/ioutil"
+    "strings"
 )
 
 func pubIP() string {
@@ -38,14 +39,15 @@ func main() {
     sharepoint := flag.Arg(0)
     addr := flag.Arg(1)
     zkaddr := flag.Arg(2)
-
+    port := strings.Split(addr, ":")[1]
+    pubaddr := pubIP()+":"+port
     // setup loopback filesystem
-    nfs := proj.NewServerFs(sharepoint, addr, zkaddr)
+    nfs := proj.NewServerFs(sharepoint, pubaddr, zkaddr)
 
     // setup rpc server
     server := rpc.NewServer()
     e := server.RegisterName("BackendFs", &nfs)
-    l, e := net.Listen ("tcp", addr)
+    l, e := net.Listen ("tcp",":"+port)
     if e != nil {
         log.Fatal(e)
     }
