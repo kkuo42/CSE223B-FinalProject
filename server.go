@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
-	"github.com/hanwen/go-fuse/fuse"
 )
 
 type ServerFs struct {
@@ -51,15 +50,16 @@ func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 }
 
 func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
-	output.Attr, output.Status = self.fs.GetAttr(input.Name, input.Context)
-	if output.Attr == nil {
-		// fetch the attr from zk
-		kmeta, e := self.kc.Get(input.Name)
-		if e != nil {
-			// do nothing
-		}
-		output.Attr = &kmeta.Attr
+	// fetch the attr from zk
+	kmeta, e := self.kc.Get(input.Name)
+	if e != nil {
+		// do nothing
 	}
+	output.Attr = &kmeta.Attr
+	if output.Attr.Ino == 0 {
+		output.Attr, output.Status = self.fs.GetAttr(input.Name, input.Context)
+	}
+
 	return nil
 }
 
@@ -122,9 +122,10 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create:", input.Path)
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
+	a, _ := self.fs.GetAttr(input.Path, input.Context)
 
 	// TODO after create check if success or fail
-	e := self.kc.Create(input.Path, fuse.Attr{})
+	e := self.kc.Create(input.Path, *a)
 	if e != nil {
 		return e
 	}
