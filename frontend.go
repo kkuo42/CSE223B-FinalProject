@@ -53,9 +53,9 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 
     // TODO naive implementation. just picks random server..
     randback := rand.Intn(len(addrs))
-//    clientFs := NewClientFs(addrs[randback])
-	//local test
-    clientFs := NewClientFs("localhost:9898")
+    clientFs := NewClientFs(addrs[randback])
+    //local test
+    //clientFs := NewClientFs("localhost:9898")
     fmt.Println(randback)
     e = clientFs.Connect()
     if e != nil {
