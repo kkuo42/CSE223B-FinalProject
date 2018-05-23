@@ -5,14 +5,17 @@ import (
 	"log"
 	"time"
 	"strings"
-    "encoding/gob"
+	"encoding/gob"
+	"encoding/json"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/samuel/go-zookeeper/zk"
 )
 
 type ServerFs struct {
 	addr string
+	pubaddr string
 	fs pathfs.FileSystem
 	zkClient *zk.Conn
 	openFiles []nodefs.File
@@ -37,11 +40,11 @@ func NewServerFs(directory, addr, pubaddr, zkaddr string) ServerFs {
 		panic(e)
 	}
 
-	return ServerFs{addr: addr, fs: fs, zkClient: zkClient}
+	return ServerFs{addr: addr, pubaddr: pubaddr, fs: fs, zkClient: zkClient}
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
-
+	fmt.Println("opening:", input.Name)
 	loopbackFile, status := self.fs.Open(input.Name, input.Flags, input.Context)
 	self.openFiles = append(self.openFiles, loopbackFile)
 	output.FileId = len(self.openFiles)-1
@@ -50,12 +53,30 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 }
 
 func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
+	// use the keeper to list all the files in the directory
+	fmt.Println("opening dir:", input.Name)
 	output.Stream, output.Status = self.fs.OpenDir(input.Name, input.Context)
+	files, _, e := self.zkClient.Children("/data")
+
+	fmt.Println(files)
+	if e != nil {
+		panic(e)
+	}
+
+	// add the keeper files to the output stream
+	fileEntries := []fuse.DirEntry{}
+	for _, f := range files {
+		fileEntries = append(fileEntries, fuse.DirEntry{Name: f})
+	}
+
+	output.Stream = fileEntries
+
 	return nil
 }
 
 func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
 	output.Attr, output.Status = self.fs.GetAttr(input.Name, input.Context)
+	fmt.Println("output attr:", output.Attr)
 	return nil
 }
 
@@ -87,17 +108,30 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 }
 
 func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
-	fmt.Println("Create: "+input.Path)
-	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
-	_, err := self.zkClient.Create("/data/"+input.Path, []byte(self.addr), int32(0), zk.WorldACL(zk.PermAll))
+	fmt.Println("Create:", input.Path)
+	// before creation check if the file already exists, if it does
+	// then we should move that file to this server and TODO add as secondary
+	data, _, e := self.zkClient.Get("/data/"+input.Path)
+	// if the keeper returns an error the node doesnt exist
+	if e != nil {
+		keeperfile := Keeper{Primary: self.pubaddr}
+		d, e := json.Marshal(&keeperfile)
+		s, e := self.zkClient.Create("/data/"+input.Path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+		loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
+		fmt.Println("create res:",s)
 
-	if err != nil {
-		panic(err)
+		if e != nil {
+			panic(e)
+		}
+
+		self.openFiles = append(self.openFiles, loopbackFile)
+		output.FileId = len(self.openFiles)-1
+		output.Status = status
+	} else {
+		// the node exists so we will go contact that server
+		fmt.Println(data)
+		return fmt.Errorf("cannot create a file that doesnt exist, try to read it now\n")
 	}
-
-	self.openFiles = append(self.openFiles, loopbackFile)
-	output.FileId = len(self.openFiles)-1
-	output.Status = status
 	return nil
 }
 
@@ -108,7 +142,17 @@ func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) e
 }
 
 func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
+	fmt.Println("Write:", input.FileId)
 	output.Written, output.Status = self.openFiles[input.FileId].Write(input.Data, input.Off)
+
+	// after we have written the file we will go an update the node that we created/modified
+	data, _, _ := self.zkClient.Get("/data/"+input.Path)
+	var keeperfile Keeper
+	_ = json.Unmarshal(data, &keeperfile)
+	size := uint64(len(input.Data))
+	keeperfile.Attr = fuse.Attr{Size: size, Mode: 0755}
+	m, _ := json.Marshal(&keeperfile)
+	_, _ = self.zkClient.Set("/data/"+input.Path, m, -1)
 	return nil
 }
 

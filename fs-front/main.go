@@ -12,10 +12,6 @@ import (
     "github.com/hanwen/go-fuse/fuse/pathfs"
 )
 
-func shutdown() {
-
-}
-
 func main() {
 	// TODO note even though nodes are ephemeral we may get a response from a dead node,
 	// if a node stops responding for a while and comes back online it needs to re register
