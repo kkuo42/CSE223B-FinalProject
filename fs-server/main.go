@@ -38,13 +38,14 @@ func main() {
     }
     sharepoint := flag.Arg(0)
     addr := flag.Arg(1)
+	port := strings.Split(addr, ":")[1]
     zkaddr := flag.Arg(2)
 	if strings.Split(addr, ":")[0] != "localhost" {
-		port := strings.Split(addr, ":")[1]
-		addr := pubIP()+":"+port
+		addr = pubIP()+":"+port
 	}
+
     // setup loopback filesystem
-    nfs := proj.NewServerFs(sharepoint, pubaddr, zkaddr)
+    nfs := proj.NewServerFs(sharepoint, addr, zkaddr)
 
     // setup rpc server
     server := rpc.NewServer()

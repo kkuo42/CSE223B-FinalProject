@@ -23,6 +23,10 @@ stop_jobs() {
 	kill $front0PID
 	kill $front1PID
 	echo
+	fusermount -u data/to0
+	fusermount -u data/to1
+	echo
+	
 	tail logs/*.txt
 }
 
