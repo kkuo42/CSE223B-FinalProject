@@ -60,7 +60,7 @@ func (k *KeeperClient) Get(path string) (KeeperMeta, error) {
 		return KeeperMeta{}, e
 	}
 	var kmeta KeeperMeta
-	e = json.Unmarshal(data, kmeta)
+	e = json.Unmarshal(data, &kmeta)
 	return kmeta, nil
 }
 
