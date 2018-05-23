@@ -53,9 +53,9 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 
     // TODO naive implementation. just picks random server..
     randback := rand.Intn(len(addrs))
-    clientFs := NewClientFs(addrs[randback])
+    //clientFs := NewClientFs(addrs[randback])
     //local test
-    //clientFs := NewClientFs("localhost:9898")
+    clientFs := NewClientFs("localhost:9898")
     fmt.Println(randback)
     e = clientFs.Connect()
     if e != nil {
@@ -66,6 +66,7 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
+	fmt.Println("open on ", name)
 	input := &Open_input{Name: name, Flags: flags, Context: context}
 	output := &Open_output{}
 
@@ -76,7 +77,7 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
 		// return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
 	}
 
-	fuseFile = &FrontendFile{FileId: output.FileId, Backend: self.backendFs, Name: name}
+	fuseFile = &FrontendFile{FileId: output.FileId, Backend: self.backendFs, Name: name, Context: context}
 
 	return fuseFile, output.Status
 }
@@ -98,6 +99,7 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 	output := &GetAttr_output{}
 
 	e := self.backendFs.GetAttr(input, output)
+	fmt.Println("output attr:", output)
 
 	if e != nil {
 	    log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
@@ -165,7 +167,7 @@ func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fu
 	if e != nil {
 		return nil, fuse.ENOSYS
 	}
-	fuseFile = &FrontendFile{FileId: output.FileId, Backend: self.backendFs, Name: path}
+	fuseFile = &FrontendFile{FileId: output.FileId, Backend: self.backendFs, Name: path, Context: context}
 
 	return fuseFile, output.Status
 }
@@ -177,6 +179,7 @@ type FrontendFile struct {
 	Name string
 	FileId int
 	Backend BackendFs
+	Context *fuse.Context
 }
 func (self *FrontendFile) SetInode(*nodefs.Inode) {} //ok
 func (self *FrontendFile) String() string {return fmt.Sprintf("FrontendFile(%v:%v)", self.Backend, self.FileId)}
@@ -194,7 +197,7 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 }
 
 func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fuse.Status) {
-	input := &FileWrite_input{self.Name, self.FileId, data, off}
+	input := &FileWrite_input{self.Name, self.FileId, data, off, self.Context}
 	output := &FileWrite_output{}
 	e := self.Backend.FileWrite(input, output)
 

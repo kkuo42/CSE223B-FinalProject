@@ -76,22 +76,62 @@ func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 
 func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
 	output.Attr, output.Status = self.fs.GetAttr(input.Name, input.Context)
-	fmt.Println("output attr:", output.Attr)
+	if output.Attr == nil {
+		// fetch the attr from zk
+		data, _, e := self.zkClient.Get("/data/" + input.Name)
+		if e != nil {
+			// do nothing for now, should crash
+		}
+		var keeperdata Keeper
+		e = json.Unmarshal(data, &keeperdata)
+		output.Attr = &keeperdata.Attr
+	}
+	fmt.Println(input.Name, output.Attr)
 	return nil
 }
 
 func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
 	output.Status = self.fs.Rename(input.Old, input.New, input.Context)
+	fmt.Println(output.Status)
+	a, _ := self.fs.GetAttr(input.New, input.Context)
+
+	keeperdata := Keeper{Attr: *a, Primary: self.pubaddr}
+	d, _ := json.Marshal(&keeperdata)
+
+	_, e := self.zkClient.Create("/data/"+input.New, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+	if e != nil {
+		// do nothing for now
+		fmt.Println("mv error", e)
+		return nil
+	}
+
+	e = self.zkClient.Delete("/data/"+input.Old, -1)
 	return nil
 }
 
 func (self *ServerFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	output.Status = self.fs.Mkdir(input.Name, input.Mode, input.Context)
+	// get attributes after make 
+	a, _ := self.fs.GetAttr(input.Name, input.Context)
+
+	keeperdata := Keeper{Attr: *a, Primary: self.pubaddr}
+	d, _ := json.Marshal(&keeperdata)
+
+	_, e := self.zkClient.Create("/data/"+input.Name, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+	if e != nil {
+		return e
+	}
 	return nil
 }
 
 func (self *ServerFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 	output.Status = self.fs.Rmdir(input.Name, input.Context)
+
+	e := self.zkClient.Delete("/data/"+input.Name, -1)
+
+	if e != nil {
+		panic(e)
+	}
 	return nil
 }
 
@@ -145,12 +185,13 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 	fmt.Println("Write:", input.FileId)
 	output.Written, output.Status = self.openFiles[input.FileId].Write(input.Data, input.Off)
 
+	a, _ := self.fs.GetAttr(input.Path, input.Context)
+
 	// after we have written the file we will go an update the node that we created/modified
 	data, _, _ := self.zkClient.Get("/data/"+input.Path)
 	var keeperfile Keeper
 	_ = json.Unmarshal(data, &keeperfile)
-	size := uint64(len(input.Data))
-	keeperfile.Attr = fuse.Attr{Size: size, Mode: 0755}
+	keeperfile.Attr = *a
 	m, _ := json.Marshal(&keeperfile)
 	_, _ = self.zkClient.Set("/data/"+input.Path, m, -1)
 	return nil

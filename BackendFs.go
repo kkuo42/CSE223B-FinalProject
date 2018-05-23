@@ -51,6 +51,7 @@ type FileWrite_input struct {
 	FileId int
 	Data []byte
 	Off  int64
+	Context *fuse.Context
 }
 
 type FileWrite_output struct {
