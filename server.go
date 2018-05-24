@@ -149,13 +149,41 @@ func (self *ServerFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 
 func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 	fmt.Println("Unlink: "+input.Name)
-	output.Status = self.fs.Unlink(input.Name, input.Context)
-	e := self.kc.Remove(input.Name)
-
+	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
 		return e
 	}
+	if self.addr == kmeta.Primary {
+		e = self.kc.Remove(input.Name)
+		if e != nil {
+			panic(e)
+		}
+		output.Status = self.fs.Unlink(input.Name, input.Context)
 
+		for _, replicaAddr := range kmeta.Replicas {
+			client := NewClientFs(replicaAddr)
+			client.Connect()
+			e = client.ReplicaUnlink(input, output)
+			if e != nil {
+				return e
+			}
+		}
+
+	} else {
+		client := NewClientFs(kmeta.Primary)
+		client.Connect()
+		e = client.Unlink(input, output)
+		if e != nil {
+			panic(e)
+		}
+	}
+
+	return nil
+}
+
+func (self *ServerFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) error {
+	fmt.Println("ReplicaUnlink:",input.Name)
+	output.Status = self.fs.Unlink(input.Name, input.Context)
 	return nil
 }
 

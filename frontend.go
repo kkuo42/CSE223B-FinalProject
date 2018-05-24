@@ -103,6 +103,7 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 }
 
 func (self *Frontend) Unlink(name string, context *fuse.Context) (code fuse.Status) {
+	fmt.Println("Unlink:",name)
 	input := &Unlink_input{name, context}
 	output := &Unlink_output{}
 
@@ -179,6 +180,7 @@ func (self *FrontendFile) String() string {return fmt.Sprintf("FrontendFile(%v:%
 func (self *FrontendFile) InnerFile() nodefs.File {return nil} //ok
 
 func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResult, status fuse.Status) {
+	fmt.Println("Read:", self.Name)
 	input := &FileRead_input{Path: self.Name, FileId: self.FileId, Off: off, BuffLen: len(dest)}
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
 	e := self.Backend.FileRead(input, output)

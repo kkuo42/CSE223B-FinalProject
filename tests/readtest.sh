@@ -92,8 +92,16 @@ echo "file a contents" > data/to0/a
 sleep 1
 cat data/to0/a
 sleep 1
+echo "from0 contents: `ls data/from0`"
+echo "from1 contents: `ls data/from1`"
+echo "to0 contents: `ls data/to0`"
+echo "to1 contents: `ls data/to1`"
 cat data/to1/a
 sleep 1
+echo "from0 contents: `ls data/from0`"
+echo "from1 contents: `ls data/from1`"
+echo "to0 contents: `ls data/to0`"
+echo "to1 contents: `ls data/to1`"
 
 stop_jobs
 

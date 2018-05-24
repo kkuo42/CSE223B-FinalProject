@@ -115,7 +115,7 @@ type FileRelease_input struct {
 }
 
 type FileRelease_output struct {
-	
+
 }
 
 type BackendFs interface {
