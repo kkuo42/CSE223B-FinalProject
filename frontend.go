@@ -22,13 +22,43 @@ check https://github.com/hanwen/go-fuse/blob/master/fuse/pathfs/api.go for
 interface to implement
 */
 
+// dont hate me, made this struct instead of dealing with a race condition with
+// concurrent writes to different arrays to get the server with min ping
+
 type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs
 	backends map[string]string
 }
 
-func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
+func getClosestBackend(addrs []string) *ClientFs {
+	done := make(chan bool)
+	var minClient *ClientFs
+
+	for _, addr := range addrs {
+		go func(a string) {
+			c := NewClientFs(a)
+			e := c.Connect()
+			if e != nil {
+				log.Println("couldnt connect to backend", addr)
+			} else if minClient == nil {
+				// this is the first server to respond
+				minClient = c
+				log.Printf("Connected to Backend: %v\n", a)
+			}
+			done <- true
+		}(addr)
+	}
+
+	// wait for all responses before returning
+	for i := 0; i < len(addrs); i++ {
+		<-done
+	}
+
+	return minClient
+}
+
+func NewFrontendRemotelyBacked(zkaddrs []string, backaddr string) Frontend {
     fs := pathfs.NewDefaultFileSystem()
 
     // make zkclient, connect and list connected backends
@@ -49,14 +79,18 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 	    log.Fatalf("ERROR: no backends")
     }
 
+
     // TODO naive implementation. just picks most recent server..
     // randback := rand.Intn(len(addrs))
-    clientFs := NewClientFs(addrs[len(addrs)-1])
+    clientFs := getClosestBackend(addrs)
+    if backaddr != "" {
+	    clientFs = NewClientFs(backaddr)
+    }
     e = clientFs.Connect()
     if e != nil {
 		log.Fatalf("error connecting to backend. try another one?, error: %v",e)
     }
-    return Frontend{FileSystem: fs, backendFs: &clientFs}
+    return Frontend{FileSystem: fs, backendFs: clientFs}
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {

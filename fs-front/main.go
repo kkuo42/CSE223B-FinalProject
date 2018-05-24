@@ -16,17 +16,21 @@ func main() {
 	// TODO note even though nodes are ephemeral we may get a response from a dead node,
 	// if a node stops responding for a while and comes back online it needs to re register
 	// with zookeeper
+    backaddr := ""
 
     // parse args
     flag.Parse()
-    if len(flag.Args()) != 2 {
-	    log.Fatal("Usage:\n  fs-front <MOUNTPOINT> <ZOOKEEPERIP>")
+    if len(flag.Args()) < 2 {
+	    log.Fatal("Usage:\n  fs-front <MOUNTPOINT> <ZOOKEEPERIP> <optional: BACKENDIP>")
+    }
+    if len(flag.Args()) == 3 {
+	    backaddr = flag.Arg(2)
     }
     mountpoint := flag.Arg(0)
     zkaddr := []string{flag.Arg(1)}
 
     // setup frontend filesystem
-    frontend := proj.NewFrontendRemotelyBacked(zkaddr) // remote
+    frontend := proj.NewFrontendRemotelyBacked(zkaddr, backaddr) // remote
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
 
     // mount
