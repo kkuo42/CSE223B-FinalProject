@@ -1,8 +1,8 @@
 package proj
 
 import (
+	"log"
 	"os"
-	"fmt"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -31,10 +31,10 @@ func NewServerFs(directory, addr, zkaddr string) ServerFs {
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
-	fmt.Println("Open", input.Name)
+	log.Println("Open:", input.Name)
 	loopbackFile, status := self.fs.Open(input.Name, input.Flags, input.Context)
 	if status == fuse.ENOENT {
-		fmt.Println("file "+input.Name+" not currently on server")
+		log.Println("file "+input.Name+" not currently on server")
 		kmeta, e := self.kc.Get(input.Name)
 		if e != nil {
 			panic(e)
@@ -58,7 +58,7 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		}
 
 		newFile.Close()
-		fmt.Println("file transferred over")
+		log.Println("file transferred over")
 
 		loopbackFile, status = self.fs.Open(input.Name, input.Flags, input.Context)
 
@@ -77,7 +77,7 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 
 func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
 	// use the keeper to list all the files in the directory
-	fmt.Println("opening dir:", input.Name)
+	log.Println("opening dir:", input.Name)
 	output.Stream, output.Status = self.fs.OpenDir(input.Name, input.Context)
 	entries, e := self.kc.GetChildrenAttributes(input.Name)
 	if e != nil {
@@ -89,7 +89,7 @@ func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 }
 
 func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
-	fmt.Println("GetAttr", input.Name)
+	log.Println("GetAttr", input.Name)
 	// fetch the attr from zk
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
@@ -105,20 +105,19 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 
 func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
 	output.Status = self.fs.Rename(input.Old, input.New, input.Context)
-	fmt.Println(output.Status)
 	a, _ := self.fs.GetAttr(input.New, input.Context)
 
 	e := self.kc.Create(input.New, *a)
 	if e != nil {
 		// do nothing for now
-		fmt.Println("mv error", e)
+		log.Println("mv error", e)
 		return e
 	}
 
 	e = self.kc.Remove(input.Old)
 	if e != nil {
 		// do nothing for now
-		fmt.Println("mv error", e)
+		log.Println("mv error", e)
 		return e
 	}
 	return nil
@@ -148,7 +147,7 @@ func (self *ServerFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 }
 
 func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
-	fmt.Println("Unlink: "+input.Name)
+	log.Println("Unlink: "+input.Name)
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
 		return e
@@ -182,13 +181,13 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 }
 
 func (self *ServerFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) error {
-	fmt.Println("ReplicaUnlink:",input.Name)
+	log.Println("ReplicaUnlink:",input.Name)
 	output.Status = self.fs.Unlink(input.Name, input.Context)
 	return nil
 }
 
 func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
-	fmt.Println("Create:", input.Path)
+	log.Println("Create:", input.Path)
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
 	a, _ := self.fs.GetAttr(input.Path, input.Context)
 
@@ -204,16 +203,15 @@ func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 }
 
 func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) error {
-	fmt.Println("Read -", "Path:", input.Path,"FileId:",input.FileId)
+	log.Println("Read -", "Path:", input.Path,"FileId:",input.FileId)
 	output.Dest = make([]byte, input.BuffLen) // recreates the buffer on server for client/server or replaces orignal for local
 	output.ReadResult, output.Status = self.openFiles[input.FileId].Read(output.Dest, input.Off)
 	return nil
 }
 
 func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
-	fmt.Println("Write -", "Path:", input.Path,"FileId:",input.FileId)
+	log.Println("Write -", "Path:", input.Path,"FileId:",input.FileId)
 	output.Written, output.Status = self.openFiles[input.FileId].Write(input.Data, input.Off)
-	//fmt.Println("fs write")
 
 	// after we have written the file we will go an update the node that we created/modified
 	a, _ := self.fs.GetAttr(input.Path, input.Context)
@@ -221,19 +219,18 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 	if e != nil {
 		return e
 	}
-	//fmt.Println("write get")
 
 	kmeta.Attr = *a
 	e = self.kc.Set(input.Path, kmeta)
 	if e != nil {
 		return e
 	}
-	//fmt.Println("end of write")
+
 	return nil
 }
 
 func (self *ServerFs) FileRelease(input *FileRelease_input, output *FileRelease_output) error {
-	fmt.Println("Releasing file", input.Path)
+	log.Println("Releasing file", input.Path)
 	/*
 	self.openFiles[input.FileId].Release()
 	//Removes file from open 

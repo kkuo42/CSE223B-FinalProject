@@ -11,23 +11,21 @@ type ClientFs struct {
 	conn *rpc.Client
 }
 
-func NewClientFs(addr string) ClientFs {
+func NewClientFs(addr string) *ClientFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
-	return ClientFs{addr: addr}
+	return &ClientFs{addr: addr}
 }
 
 func (self *ClientFs) Connect() error {
 
 	if (self.conn == nil) {
-		log.Println("connecting to backend: ", self.addr)
 		conn, e := rpc.DialHTTP("tcp", self.addr)
 		if e != nil {
 			log.Println("error connecting: ", e)
 			return e
 		}
 		self.conn = conn
-		log.Println("sucessfully connected")
 	}
 
 	return nil
