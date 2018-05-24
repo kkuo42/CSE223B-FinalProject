@@ -34,31 +34,6 @@ type GetAttr_output struct {
 	Status fuse.Status
 }
 
-type FileRead_input struct {
-	Path string
-	FileId int
-	Off int64
-	BuffLen int
-}
-type FileRead_output struct {
-	Dest []byte
-	ReadResult fuse.ReadResult
-	Status fuse.Status
-}
-
-type FileWrite_input struct {
-	Path string
-	FileId int
-	Data []byte
-	Off  int64
-	Context *fuse.Context
-}
-
-type FileWrite_output struct {
-	Written uint32
-	Status fuse.Status
-}
-
 type Unlink_input struct  {
 	Name string
 	Context *fuse.Context
@@ -109,6 +84,40 @@ type Rmdir_output struct {
 	Status fuse.Status
 }
 
+type FileRead_input struct {
+	Path string
+	FileId int
+	Off int64
+	BuffLen int
+}
+type FileRead_output struct {
+	Dest []byte
+	ReadResult fuse.ReadResult
+	Status fuse.Status
+}
+
+type FileWrite_input struct {
+	Path string
+	FileId int
+	Data []byte
+	Off  int64
+	Context *fuse.Context
+}
+
+type FileWrite_output struct {
+	Written uint32
+	Status fuse.Status
+}
+
+type FileRelease_input struct {
+	Path string
+	FileId int
+}
+
+type FileRelease_output struct {
+
+}
+
 type BackendFs interface {
 	// wrappers for pathfs loopback file system calls
 	Open(input *Open_input, output *Open_output) error
@@ -123,6 +132,7 @@ type BackendFs interface {
 	// wrappers for file calls
 	FileRead(input *FileRead_input, output *FileRead_output) error
 	FileWrite(input *FileWrite_input, output *FileWrite_output) error
+	FileRelease(input *FileRelease_input, output *FileRelease_output) error
 
 }
 

@@ -33,12 +33,9 @@ func (self *ClientFs) Connect() error {
 
 func (self *ClientFs) Open(input *Open_input, output *Open_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.Open", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -52,12 +49,9 @@ func (self *ClientFs) Open(input *Open_input, output *Open_output) error {
 
 func (self *ClientFs) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.OpenDir", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -71,12 +65,9 @@ func (self *ClientFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 
 func (self *ClientFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.GetAttr", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -85,17 +76,14 @@ func (self *ClientFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 		}
 	}
 
-	return e	
+	return e
 }
 
 func (self *ClientFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.Unlink", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -107,14 +95,27 @@ func (self *ClientFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 	return e
 }
 
-func (self *ClientFs) Create(input *Create_input, output *Create_output) error {
+func (self *ClientFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) error {
 	e := self.Connect()
+	if e != nil { return e }
+
+	e = self.conn.Call("BackendFs.ReplicaUnlink", input, output)
 	if e != nil {
-		return e
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.ReplicaUnlink", input, output)
+		}
 	}
 
-	e = self.conn.Call("BackendFs.Create", input, output)
+	return e
+}
 
+func (self *ClientFs) Create(input *Create_input, output *Create_output) error {
+	e := self.Connect()
+	if e != nil { return e }
+
+	e = self.conn.Call("BackendFs.Create", input, output)
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -129,12 +130,9 @@ func (self *ClientFs) Create(input *Create_input, output *Create_output) error {
 
 func (self *ClientFs) FileRead(input *FileRead_input, output *FileRead_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.FileRead", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -148,12 +146,9 @@ func (self *ClientFs) FileRead(input *FileRead_input, output *FileRead_output) e
 
 func (self *ClientFs) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.FileWrite", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -165,14 +160,27 @@ func (self *ClientFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 	return e
 }
 
-func (self *ClientFs) Rename(input *Rename_input, output *Rename_output) error {
+func (self *ClientFs) FileRelease(input *FileRelease_input, output *FileRelease_output) error {
 	e := self.Connect()
+	if e != nil { return e }
+
+	e = self.conn.Call("BackendFs.FileRelease", input, output)
 	if e != nil {
-		return e
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.FileRelease", input, output)
+		}
 	}
 
-	e = self.conn.Call("BackendFs.Rename", input, output)
+	return e
+}
 
+func (self *ClientFs) Rename(input *Rename_input, output *Rename_output) error {
+	e := self.Connect()
+	if e != nil { return e }
+
+	e = self.conn.Call("BackendFs.Rename", input, output)
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -186,12 +194,9 @@ func (self *ClientFs) Rename(input *Rename_input, output *Rename_output) error {
 
 func (self *ClientFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.Mkdir", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()
@@ -205,12 +210,9 @@ func (self *ClientFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 
 func (self *ClientFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 	e := self.Connect()
-	if e != nil {
-		return e
-	}
+	if e != nil { return e }
 
 	e = self.conn.Call("BackendFs.Rmdir", input, output)
-
 	if e != nil {
 		self.conn = nil
 		e = self.Connect()

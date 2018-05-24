@@ -94,7 +94,7 @@ func NewFrontendRemotelyBacked(zkaddrs []string, backaddr string) Frontend {
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
-	fmt.Println("open on ", name)
+	fmt.Println("Open:", name)
 	input := &Open_input{Name: name, Flags: flags, Context: context}
 	output := &Open_output{}
 
@@ -137,6 +137,7 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 }
 
 func (self *Frontend) Unlink(name string, context *fuse.Context) (code fuse.Status) {
+	fmt.Println("Unlink:",name)
 	input := &Unlink_input{name, context}
 	output := &Unlink_output{}
 
@@ -213,6 +214,7 @@ func (self *FrontendFile) String() string {return fmt.Sprintf("FrontendFile(%v:%
 func (self *FrontendFile) InnerFile() nodefs.File {return nil} //ok
 
 func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResult, status fuse.Status) {
+	fmt.Println("Read:", self.Name)
 	input := &FileRead_input{Path: self.Name, FileId: self.FileId, Off: off, BuffLen: len(dest)}
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
 	e := self.Backend.FileRead(input, output)
@@ -237,7 +239,13 @@ func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fu
 
 func (self *FrontendFile) Flock(flags int) fuse.Status {return fuse.ENOSYS} //TODO?
 func (self *FrontendFile) Flush() fuse.Status {return fuse.ENOSYS} //TODO?
-func (self *FrontendFile) Release() {} //TODO?
+
+func (self *FrontendFile) Release() {
+	input := &FileRelease_input{self.Name, self.FileId}
+	output := &FileRelease_output{}
+	self.Backend.FileRelease(input, output)
+}
+
 func (self *FrontendFile) Fsync(flags int) (code fuse.Status) {return fuse.ENOSYS} //TODO?
 func (self *FrontendFile) Truncate(size uint64) fuse.Status {return fuse.ENOSYS} //TODO?
 func (self *FrontendFile) GetAttr(out *fuse.Attr) fuse.Status {return fuse.ENOSYS} //TODO?
