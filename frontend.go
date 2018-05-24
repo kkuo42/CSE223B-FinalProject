@@ -60,7 +60,7 @@ func NewFrontendRemotelyBacked(zkaddrs []string) Frontend {
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
-	fmt.Println("open on ", name)
+	fmt.Println("Open:", name)
 	input := &Open_input{Name: name, Flags: flags, Context: context}
 	output := &Open_output{}
 
@@ -203,7 +203,13 @@ func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fu
 
 func (self *FrontendFile) Flock(flags int) fuse.Status {return fuse.ENOSYS} //TODO?
 func (self *FrontendFile) Flush() fuse.Status {return fuse.ENOSYS} //TODO?
-func (self *FrontendFile) Release() {} //TODO?
+
+func (self *FrontendFile) Release() {
+	input := &FileRelease_input{self.Name, self.FileId}
+	output := &FileRelease_output{}
+	self.Backend.FileRelease(input, output)
+}
+
 func (self *FrontendFile) Fsync(flags int) (code fuse.Status) {return fuse.ENOSYS} //TODO?
 func (self *FrontendFile) Truncate(size uint64) fuse.Status {return fuse.ENOSYS} //TODO?
 func (self *FrontendFile) GetAttr(out *fuse.Attr) fuse.Status {return fuse.ENOSYS} //TODO?

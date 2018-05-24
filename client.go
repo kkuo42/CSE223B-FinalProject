@@ -167,6 +167,25 @@ func (self *ClientFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 	return e
 }
 
+func (self *ClientFs) FileRelease(input *FileRelease_input, output *FileRelease_output) error {
+	e := self.Connect()
+	if e != nil {
+		return e
+	}
+
+	e = self.conn.Call("BackendFs.FileRelease", input, output)
+
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.FileRelease", input, output)
+		}
+	}
+
+	return e
+}
+
 func (self *ClientFs) Rename(input *Rename_input, output *Rename_output) error {
 	e := self.Connect()
 	if e != nil {
