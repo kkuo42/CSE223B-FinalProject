@@ -31,27 +31,26 @@ func pubIP() string {
 }
 
 func main() {
+    // parse args
     flag.Parse()
-    addr := ":9898"
-
-    if len(flag.Args()) < 1 {
-        log.Fatal("Usage:\n  fs-server SHAREPOINT")
+    if len(flag.Args()) != 3 {
+        log.Fatal("Usage:\n  fs-server <SHAREPOINT> <SERVERIP> <ZOOKEEPERIP>")
     }
-    if len(flag.Args()) == 2 {
-	addr = flag.Arg(1)
-    }
-
-    pubaddr := pubIP()+":"+strings.Split(addr, ":")[1]
-    log.Println("public addr", pubaddr)
-    // setup loopback filesystem
-    zkaddr := "54.197.196.191:2181"
     sharepoint := flag.Arg(0)
-    nfs := proj.NewServerFs(sharepoint, addr, pubaddr, zkaddr)
+    addr := flag.Arg(1)
+	port := strings.Split(addr, ":")[1]
+    zkaddr := flag.Arg(2)
+	if strings.Split(addr, ":")[0] != "localhost" {
+		addr = pubIP()+":"+port
+	}
+
+    // setup loopback filesystem
+    nfs := proj.NewServerFs(sharepoint, addr, zkaddr)
 
     // setup rpc server
     server := rpc.NewServer()
     e := server.RegisterName("BackendFs", &nfs)
-    l, e := net.Listen ("tcp", addr)
+    l, e := net.Listen ("tcp",":"+port)
     if e != nil {
         log.Fatal(e)
     }

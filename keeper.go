@@ -18,7 +18,7 @@ type KeeperMeta struct {
 
 type KeeperClient struct {
 	zkaddr string
-	pubaddr string
+	addr string
 	client *zk.Conn
 	backends []string
 }
@@ -27,8 +27,8 @@ type KeeperHandler struct {
 	// TODO, when servers go down/up/move 
 }
 
-func NewKeeperClient(addr, pubaddr string) *KeeperClient {
-	return &KeeperClient{zkaddr: addr, pubaddr: pubaddr}
+func NewKeeperClient(zkaddr, addr string) *KeeperClient {
+	return &KeeperClient{zkaddr: zkaddr, addr: addr}
 }
 
 func (k *KeeperClient) Init() error {
@@ -45,7 +45,7 @@ func (k *KeeperClient) Init() error {
 	_, _= k.client.Create("/data", []byte("data"), int32(0), zk.WorldACL(zk.PermAll))
 
 	// if there is no error then we want to register that this server is alive
-	_, err = k.client.Create("/alive/"+k.pubaddr, []byte(k.pubaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+	_, err = k.client.Create("/alive/"+k.addr, []byte(k.addr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		log.Fatalf("error creating node in zkserver")
 		return err
@@ -60,7 +60,7 @@ func (k *KeeperClient) Get(path string) (KeeperMeta, error) {
 		return KeeperMeta{}, e
 	}
 	var kmeta KeeperMeta
-	e = json.Unmarshal(data, kmeta)
+	e = json.Unmarshal(data, &kmeta)
 	return kmeta, nil
 }
 
@@ -90,7 +90,7 @@ func (k *KeeperClient) GetChildren(path string) ([]string, error) {
 
 func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, error) {
 	files, e := k.GetChildren(path)
-	log.Println("not get children")
+
 	if e != nil {
 		return nil, e
 	}
@@ -98,7 +98,6 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 
 	// for each of the files fetched get their metadata (may be unecessary)
 	for _, f := range files {
-		log.Println(path, f)
 		p := f
 		if path != "" {
 			p = path + "/" + f
@@ -114,7 +113,7 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 }
 
 func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
-	kmeta := KeeperMeta{Primary: k.pubaddr, Attr: attr}
+	kmeta := KeeperMeta{Primary: k.addr, Attr: attr}
 	d, e := json.Marshal(&kmeta)
 	if e != nil {
 		return e

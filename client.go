@@ -2,8 +2,8 @@ package proj
 
 import (
 	"net/rpc"
-    "encoding/gob"
-    	"fmt"
+	"encoding/gob"
+	"log"
 )
 
 type ClientFs struct {
@@ -20,15 +20,14 @@ func NewClientFs(addr string) ClientFs {
 func (self *ClientFs) Connect() error {
 
 	if (self.conn == nil) {
-		fmt.Println("connecting to backend ba", self.addr)
+		log.Println("connecting to backend: ", self.addr)
 		conn, e := rpc.DialHTTP("tcp", self.addr)
-		fmt.Println("postdial")
 		if e != nil {
-			fmt.Println("error connecting: ", e)
+			log.Println("error connecting: ", e)
 			return e
 		}
 		self.conn = conn
-		fmt.Println("sucessfully connected")
+		log.Println("sucessfully connected")
 	}
 
 	return nil

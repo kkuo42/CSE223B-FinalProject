@@ -1,3 +1,6 @@
-from
-to
 .*
+data
+logs
+*.out
+zkdata
+zookeeper-3.4.12
