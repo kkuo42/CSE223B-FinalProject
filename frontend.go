@@ -78,14 +78,15 @@ func NewFrontendRemotelyBacked(zkaddrs []string, backaddr string) Frontend {
     if len(addrs) == 0 {
 	    log.Fatalf("ERROR: no backends")
     }
-
-
-    // TODO naive implementation. just picks most recent server..
-    // randback := rand.Intn(len(addrs))
-    clientFs := getClosestBackend(addrs)
+	var clientFs *ClientFs
+	fmt.Println("BACKADDR:",backaddr)
     if backaddr != "" {
 	    clientFs = NewClientFs(backaddr)
-    }
+		log.Printf("Connected to Backend: %v\n", backaddr)
+    } else {
+		clientFs = getClosestBackend(addrs)
+	}
+
     e = clientFs.Connect()
     if e != nil {
 		log.Fatalf("error connecting to backend. try another one?, error: %v",e)
@@ -101,11 +102,12 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
 	e := self.backendFs.Open(input, output)
 
 	if e != nil {
-		log.Fatalf("Fuse call to backendFs.Open failed: %v\n%v, %v\n", e, output.FileId, output.Status)
-		// return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
+		log.Fatalf("Fuse call to backendFs.Open failed: %v\n, %v\n", e, output.Status)
+		return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
 	}
-
-	fuseFile = &FrontendFile{FileId: output.FileId, Backend: self.backendFs, Name: name, Context: context}
+	if output.Status == fuse.OK {
+		fuseFile = &FrontendFile{Name: name, Backend: self.backendFs, Context: context}
+	}
 
 	return fuseFile, output.Status
 }
@@ -195,7 +197,7 @@ func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fu
 	if e != nil {
 		return nil, fuse.ENOSYS
 	}
-	fuseFile = &FrontendFile{FileId: output.FileId, Backend: self.backendFs, Name: path, Context: context}
+	fuseFile = &FrontendFile{Backend: self.backendFs, Name: path, Context: context}
 
 	return fuseFile, output.Status
 }
@@ -205,17 +207,16 @@ func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fu
 // A frontend file is passed to the fuse front end, it has the means to forward the operations to a file on the backed server
 type FrontendFile struct {
 	Name string
-	FileId int
 	Backend BackendFs
 	Context *fuse.Context
 }
 func (self *FrontendFile) SetInode(*nodefs.Inode) {} //ok
-func (self *FrontendFile) String() string {return fmt.Sprintf("FrontendFile(%v:%v)", self.Backend, self.FileId)}
+func (self *FrontendFile) String() string {return fmt.Sprintf("FrontendFile(%v:%v)", self.Backend, self.Name)}
 func (self *FrontendFile) InnerFile() nodefs.File {return nil} //ok
 
 func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResult, status fuse.Status) {
 	fmt.Println("Read:", self.Name)
-	input := &FileRead_input{Path: self.Name, FileId: self.FileId, Off: off, BuffLen: len(dest)}
+	input := &FileRead_input{Path: self.Name, Off: off, BuffLen: len(dest)}
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
 	e := self.Backend.FileRead(input, output)
 	if e != nil {
@@ -226,7 +227,7 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 }
 
 func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fuse.Status) {
-	input := &FileWrite_input{self.Name, self.FileId, data, off, self.Context}
+	input := &FileWrite_input{Path: self.Name, Data: data, Off:off, Context: self.Context}
 	output := &FileWrite_output{}
 	e := self.Backend.FileWrite(input, output)
 
@@ -241,9 +242,11 @@ func (self *FrontendFile) Flock(flags int) fuse.Status {return fuse.ENOSYS} //TO
 func (self *FrontendFile) Flush() fuse.Status {return fuse.ENOSYS} //TODO?
 
 func (self *FrontendFile) Release() {
-	input := &FileRelease_input{self.Name, self.FileId}
+	/*
+	input := &FileRelease_input{self.Name}
 	output := &FileRelease_output{}
 	self.Backend.FileRelease(input, output)
+	*/
 }
 
 func (self *FrontendFile) Fsync(flags int) (code fuse.Status) {return fuse.ENOSYS} //TODO?

@@ -1,12 +1,7 @@
 # #!/bin/bash
 
-# this script creates a keeper locally. 
-# it expects zookeeper to be in the same directory
-# with the datadir in zookeeper-3.4.12/conf/zoo.cfg set to zkdata also in this directory
-
-# the script lauches clients+servers as pairs so that the client is guaranteed to be assigned 
-# to that server because the frontend will assign most recently joined server
-
+# This test creates a file from server a, reads it from server b, and then writes to it from server b.
+# The results should be ab on all servers
 
 # build source
 make || exit 1
@@ -88,18 +83,32 @@ then
     exit 1
 fi
 
+echo "writing a to data/to0/a"
+echo -n "a" > data/to0/a
+sleep 1
+echo "from0 contents: `ls data/from0`"
+echo "from1 contents: `ls data/from1`"
+echo "to0 contents: `ls data/to0`"
+echo "to1 contents: `ls data/to1`"
+echo
 
+echo "cat data/to1/a"
+cat data/to1/a > /dev/null
+sleep 1
+echo "from0 a file contents: `cat data/from0/a`"
+echo "from1 a file contents: `cat data/from1/a`"
+echo "to0 a file contents: `cat data/to0/a`"
+echo "to1 a file contents: `cat data/to1/a`"
+echo
 
-#wait for shutdown
-while true; do
-    read -p "Do you wish to stop all servers and clients this program? [y/n] " yn
-    case $yn in
-        [Yy]* ) 
-		stop_jobs
-		exit 0
-        ;;
-        * ) 
-		echo "Please answer yes."
-		;;
-    esac
-done
+echo "appending b to data/to1/a"
+echo -n "b" >> data/to1/a
+sleep 1
+echo "from0 a file contents: `cat data/from0/a`"
+echo "from1 a file contents: `cat data/from1/a`"
+echo "to0 a file contents: `cat data/to0/a`"
+echo "to1 a file contents: `cat data/to1/a`"
+echo
+
+stop_jobs
+

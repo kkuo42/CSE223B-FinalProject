@@ -12,7 +12,6 @@ type Open_input struct {
 }
 type Open_output struct {
 	// FuseFile nodefs.File // replaced with a FrontendFile and openFiles
-	FileId int
 	Status fuse.Status
 }
 
@@ -86,7 +85,6 @@ type Rmdir_output struct {
 
 type FileRead_input struct {
 	Path string
-	FileId int
 	Off int64
 	BuffLen int
 }
@@ -98,10 +96,12 @@ type FileRead_output struct {
 
 type FileWrite_input struct {
 	Path string
-	FileId int
 	Data []byte
 	Off  int64
 	Context *fuse.Context
+
+	Flags uint32
+	Kmeta KeeperMeta
 }
 
 type FileWrite_output struct {
@@ -111,7 +111,6 @@ type FileWrite_output struct {
 
 type FileRelease_input struct {
 	Path string
-	FileId int
 }
 
 type FileRelease_output struct {
