@@ -1,12 +1,7 @@
 # #!/bin/bash
 
-# this script creates a keeper locally. 
-# it expects zookeeper to be in the same directory
-# with the datadir in zookeeper-3.4.12/conf/zoo.cfg set to zkdata also in this directory
-
-# the script lauches clients+servers as pairs so that the client is guaranteed to be assigned 
-# to that server because the frontend will assign most recently joined server
-
+# this test calls rm on a file from different servers in various scenarios.
+# The results should be empty directories in each scenario
 
 # build source
 make || exit 1

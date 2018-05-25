@@ -84,6 +84,7 @@ server1PID=$!
 sleep 1
 echo
 
+
 echo "RUNNING FS FRONT 1"
 fs-front data/to1 localhost:9501 >> logs/front1_log.txt&
 front1PID=$!
