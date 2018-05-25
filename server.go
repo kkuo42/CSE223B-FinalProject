@@ -17,21 +17,24 @@ type ServerFs struct {
 	kc *KeeperClient
 	openFiles map[string]nodefs.File
 	openFlags map[string]uint32
+  backends []*ClientFs
 }
 
-func NewServerFs(directory, addr, zkaddr string) ServerFs {
+func NewServerFs(directory, addr string) ServerFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
 	fs := NewCustomLoopbackFileSystem(directory)
-	kc := NewKeeperClient(zkaddr, addr)
+	kc := NewKeeperClient(addr)
 	openFiles := make(map[string]nodefs.File)
 	openFlags := make(map[string]uint32)
 	e := kc.Init()
+
 	if e != nil {
 		panic(e)
 	}
-
-	return ServerFs{directory, addr, fs, kc, openFiles, openFlags}
+  backends, e := kc.GetBackends()
+  if e != nil { panic(e) }
+  return ServerFs{directory, addr, fs, kc, openFiles, openFlags, backends}
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
@@ -93,7 +96,7 @@ func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 }
 
 func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
-	fmt.Println("GetAttr", input.Name)
+	//fmt.Println("GetAttr", input.Name)
 	// fetch the attr from zk
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {

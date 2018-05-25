@@ -4,9 +4,9 @@ import (
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/samuel/go-zookeeper/zk"
 	"encoding/json"
-	"strings"
 	"time"
 	"log"
+        "fmt"
 )
 
 // this struct is to maintain all information relative to the keeper
@@ -17,40 +17,96 @@ type KeeperMeta struct {
 }
 
 type KeeperClient struct {
-	zkaddr string
 	addr string
 	client *zk.Conn
-	backends []string
+        backends []string
 }
 
 type KeeperHandler struct {
 	// TODO, when servers go down/up/move 
 }
 
-func NewKeeperClient(zkaddr, addr string) *KeeperClient {
-	return &KeeperClient{zkaddr: zkaddr, addr: addr}
+func NewKeeperClient(addr string) *KeeperClient {
+	return &KeeperClient{addr: addr}
+}
+
+func (k *KeeperClient) Connect() error {
+	client, _, err := zk.Connect(ZkAddrs, time.Second)
+        // TODO if cant connect go find another server?
+        if err != nil { return err }
+	k.client = client
+        return nil
 }
 
 func (k *KeeperClient) Init() error {
-	client, _, err := zk.Connect(strings.Split(k.zkaddr, ","), time.Second)
-	k.client = client
-
-	if err != nil {
+        if k.client == nil {
+            e := k.Connect()
+            if e != nil {
 		log.Fatalf("error connecting to zkserver\n")
-		return err
-	}
+		return e
+            }
+        }
 
 	// attempt to create alive and data dirs, if it fails itll be caught below
 	_, _= k.client.Create("/alive", []byte("alive"), int32(0), zk.WorldACL(zk.PermAll))
 	_, _= k.client.Create("/data", []byte("data"), int32(0), zk.WorldACL(zk.PermAll))
 
-	// if there is no error then we want to register that this server is alive
-	_, err = k.client.Create("/alive/"+k.addr, []byte(k.addr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
-	if err != nil {
-		log.Fatalf("error creating node in zkserver")
-		return err
-	}
+        // if a server is joining (addr != "") then create the node in zk 
+        if k.addr != "" {
+            _, err := k.client.Create("/alive/"+k.addr, []byte(k.addr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+            if err != nil {
+                    log.Fatalf("error creating node in zkserver")
+                    return err
+            }
+        }
+
+        // get the list of current backends
+        // TODO when a backend drops about refresh the backends
+        backends, _, _, e := k.client.ChildrenW("/alive")
+        if e != nil {
+                log.Fatalf("error getting alive nodes", e)
+                return e
+        }
+        k.backends = backends
 	return nil
+}
+
+/*
+func (k *KeeperClient) WatchAlive() {
+
+}
+*/
+
+func (k *KeeperClient) GetBackends() ([]*ClientFs, error) {
+    // this gets /alive and pings them in order, returning a list of addrs
+    // in the order that they respond.
+    // TODO may need to exclude this server (addr)?
+    done := make(chan bool)
+    backends := []*ClientFs{}
+
+    for _, addr := range k.backends {
+        go func(a string) {
+            c := NewClientFs(a)
+            // if it is not this server then connect
+            if a != k.addr {
+                e := c.Connect()
+                if e != nil {
+                        log.Println("keeper couldnt connect to backend", addr)
+                }
+            }
+            backends = append(backends, c)
+            done <- true
+        }(addr)
+    }
+
+    for i := 0; i < len(k.backends); i++ {
+        <-done
+    }
+
+    if len(backends) == 0 {
+        return nil, fmt.Errorf("No backends online yet\n")
+    }
+    return backends, nil
 }
 
 func (k *KeeperClient) Get(path string) (KeeperMeta, error) {
