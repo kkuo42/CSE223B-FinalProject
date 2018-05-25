@@ -18,8 +18,16 @@ stop_jobs() {
 	kill $front0PID
 	kill $front1PID
 	echo
-	fusermount -u data/to0
-	fusermount -u data/to1
+        #OSX Unmount
+        unamestr=`uname`
+        if [[ "$unamestr" == 'Darwin' ]]; then
+            echo "OSX UNMOUNT"
+            umount data/to0
+            umount data/to1
+        else 
+            fusermount -u data/to0
+            fusermount -u data/to1
+        fi
 	echo
 	
 	tail logs/*.txt
@@ -31,7 +39,6 @@ rm -rf zkdata zookeeper.out
 mkdir zkdata
 zookeeper-3.4.12/bin/zkServer.sh start
 echo
-ZOOKEEPERIP="localhost:2181"
 
 # reset data and logs
 rm -rf data
@@ -42,12 +49,12 @@ mkdir logs
 # pair 0
 mkdir data/from0 data/to0
 
-fs-server data/from0 localhost:9500 $ZOOKEEPERIP >> logs/server0_log.txt &
+fs-server data/from0 localhost:9500 >> logs/server0_log.txt &
 server0PID=$!
 sleep 1
 echo
 
-fs-front data/to0 $ZOOKEEPERIP localhost:9500 >> logs/front0_log.txt &
+fs-front data/to0 localhost:9500 >> logs/front0_log.txt &
 front0PID=$!
 sleep 1
 echo
@@ -64,12 +71,12 @@ fi
 # pair 1
 mkdir data/from1 data/to1
 
-fs-server data/from1 localhost:9501 $ZOOKEEPERIP >> logs/server1_log.txt&
+fs-server data/from1 localhost:9501 >> logs/server1_log.txt&
 server1PID=$!
 sleep 1
 echo
 
-fs-front data/to1 $ZOOKEEPERIP localhost:9501 >> logs/front1_log.txt&
+fs-front data/to1 localhost:9501 >> logs/front1_log.txt&
 front1PID=$!
 sleep 1
 echo
