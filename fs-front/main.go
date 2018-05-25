@@ -20,17 +20,16 @@ func main() {
 
     // parse args
     flag.Parse()
-    if len(flag.Args()) < 2 {
-	    log.Fatal("Usage:\n  fs-front <MOUNTPOINT> <ZOOKEEPERIP> <optional: BACKENDIP>")
+    if len(flag.Args()) < 1 {
+	    log.Fatal("Usage:\n  fs-front <MOUNTPOINT> <optional: BACKENDIP>")
     }
-    if len(flag.Args()) == 3 {
-	    backaddr = flag.Arg(2)
+    if len(flag.Args()) == 2 {
+	    backaddr = flag.Arg(1)
     }
     mountpoint := flag.Arg(0)
-    zkaddr := []string{flag.Arg(1)}
 
     // setup frontend filesystem
-    frontend := proj.NewFrontendRemotelyBacked(zkaddr, backaddr) // remote
+    frontend := proj.NewFrontendRemotelyBacked(backaddr) // remote
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
 
     // mount

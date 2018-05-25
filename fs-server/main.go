@@ -33,19 +33,15 @@ func pubIP() string {
 func main() {
     // parse args
     flag.Parse()
-    if len(flag.Args()) != 3 {
-        log.Fatal("Usage:\n  fs-server <SHAREPOINT> <SERVERIP> <ZOOKEEPERIP>")
+    if len(flag.Args()) != 2 {
+        log.Fatal("Usage:\n  fs-server <SHAREPOINT> <SERVERIP>")
     }
     sharepoint := flag.Arg(0)
     addr := flag.Arg(1)
-	port := strings.Split(addr, ":")[1]
-    zkaddr := flag.Arg(2)
-	if strings.Split(addr, ":")[0] != "localhost" {
-		addr = pubIP()+":"+port
-	}
+    port := strings.Split(addr, ":")[1]
 
     // setup loopback filesystem
-    nfs := proj.NewServerFs(sharepoint, addr, zkaddr)
+    nfs := proj.NewServerFs(sharepoint, addr)
 
     // setup rpc server
     server := rpc.NewServer()

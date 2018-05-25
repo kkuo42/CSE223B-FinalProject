@@ -7,20 +7,20 @@ import (
 )
 
 type ClientFs struct {
-	addr string
+	Addr string
 	conn *rpc.Client
 }
 
 func NewClientFs(addr string) *ClientFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
-	return &ClientFs{addr: addr}
+	return &ClientFs{Addr: addr}
 }
 
 func (self *ClientFs) Connect() error {
 
 	if (self.conn == nil) {
-		conn, e := rpc.DialHTTP("tcp", self.addr)
+		conn, e := rpc.DialHTTP("tcp", self.Addr)
 		if e != nil {
 			log.Println("error connecting: ", e)
 			return e

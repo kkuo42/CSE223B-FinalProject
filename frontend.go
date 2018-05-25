@@ -4,12 +4,9 @@ import (
     "log"
 	"time"
 	"fmt"
-	"strings"
-	"math/rand"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
-	"github.com/samuel/go-zookeeper/zk"
 )
 /*
 the frontend that the client uses with go-fuse
@@ -22,67 +19,31 @@ check https://github.com/hanwen/go-fuse/blob/master/fuse/pathfs/api.go for
 interface to implement
 */
 
-// dont hate me, made this struct instead of dealing with a race condition with
-// concurrent writes to different arrays to get the server with min ping
-
 type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs
-	backends map[string]string
+        kc *KeeperClient
 }
 
-func getClosestBackend(addrs []string) *ClientFs {
-	done := make(chan bool)
-	var minClient *ClientFs
-
-	for _, addr := range addrs {
-		go func(a string) {
-			c := NewClientFs(a)
-			e := c.Connect()
-			if e != nil {
-				log.Println("couldnt connect to backend", addr)
-			} else if minClient == nil {
-				// this is the first server to respond
-				minClient = c
-				log.Printf("Connected to Backend: %v\n", a)
-			}
-			done <- true
-		}(addr)
-	}
-
-	// wait for all responses before returning
-	for i := 0; i < len(addrs); i++ {
-		<-done
-	}
-
-	return minClient
-}
-
-func NewFrontendRemotelyBacked(zkaddrs []string, backaddr string) Frontend {
+func NewFrontendRemotelyBacked(backaddr string) Frontend {
     fs := pathfs.NewDefaultFileSystem()
 
-    // make zkclient, connect and list connected backends
-    zkClient, _, err := zk.Connect(strings.Split(zkaddrs[rand.Intn(len(zkaddrs))], ","), time.Second)
+    // "" indicates this is a frontend and to not add to /alive
+    kc := NewKeeperClient("")
+    e := kc.Init()
+    if e != nil { panic(e) }
 
-    // Just panic for now, should fix later
-    if err != nil {
-	    log.Fatalf("error connecting to zkserver: %v\n", err)
-    }
-
-    // TODO this needs to be a goroutine that does ChildrenW that
-    // then watches if a node goes down and if it is this one then fix
-    addrs, _, e := zkClient.Children("/alive")
+    backends, e := kc.GetBackends()
+    // TODO watch alive for changes in state and update list of clients
     if e != nil {
 	    log.Fatalf("error getting alive nodes: %v\n", e)
     }
-    if len(addrs) == 0 {
+    if len(backends) == 0 {
 	    log.Fatalf("ERROR: no backends")
     }
 
-
-    // TODO naive implementation. just picks most recent server..
-    // randback := rand.Intn(len(addrs))
-    clientFs := getClosestBackend(addrs)
+    // get the closest backend
+    clientFs := backends[0]
     if backaddr != "" {
 	    clientFs = NewClientFs(backaddr)
     }
@@ -90,6 +51,7 @@ func NewFrontendRemotelyBacked(zkaddrs []string, backaddr string) Frontend {
     if e != nil {
 		log.Fatalf("error connecting to backend. try another one?, error: %v",e)
     }
+    log.Println("Connected to backend:", clientFs.Addr)
     return Frontend{FileSystem: fs, backendFs: clientFs}
 }
 
