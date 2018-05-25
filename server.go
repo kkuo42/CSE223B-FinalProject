@@ -1,9 +1,8 @@
 package proj
 
 import (
-	//"log"
+	// "log"
 	"fmt"
-	"os"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -17,7 +16,7 @@ type ServerFs struct {
 	kc *KeeperClient
 	openFiles map[string]nodefs.File
 	openFlags map[string]uint32
-  backends []*ClientFs
+ 	backends []*ClientFs
 }
 
 func NewServerFs(directory, addr string) ServerFs {
@@ -50,24 +49,22 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		client.Connect()
 		client.Open(input, output)
 
-		newFile, err := os.Create(self.path+"/"+input.Name)
-		if err != nil {
-			panic(err)
+		newFile, create_status := self.fs.Create(input.Name, input.Flags, kmeta.Attr.Mode, input.Context)
+		if create_status != fuse.OK {
+			panic(create_status)
 		}
-		defer newFile.Close()
 
 		buffer := make([]byte, kmeta.Attr.Size)
 		readinput := &FileRead_input{input.Name, 0, len(buffer)}
 		readoutput := &FileRead_output{Dest: buffer}
 		client.FileRead(readinput, readoutput)
 		if readoutput.Status == fuse.OK {
-			newFile.Write(buffer)
+			newFile.Write(buffer, 0)
 		}
 
-		newFile.Close()
 		fmt.Println("file transferred over")
-
-		loopbackFile, status = self.fs.Open(input.Name, input.Flags, input.Context)
+		loopbackFile = newFile
+		status = create_status
 
 		kmeta.Replicas = append(kmeta.Replicas, self.addr)
 		e = self.kc.Set(input.Name, kmeta)
