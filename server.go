@@ -1,7 +1,8 @@
 package proj
 
 import (
-	"log"
+	//"log"
+	"fmt"
 	"os"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
@@ -14,7 +15,8 @@ type ServerFs struct {
 	addr string
 	fs pathfs.FileSystem
 	kc *KeeperClient
-	openFiles []nodefs.File
+	openFiles map[string]nodefs.File
+	openFlags map[string]uint32
 }
 
 func NewServerFs(directory, addr, zkaddr string) ServerFs {
@@ -22,19 +24,21 @@ func NewServerFs(directory, addr, zkaddr string) ServerFs {
 	gob.Register(&CustomReadResultData{})
 	fs := NewCustomLoopbackFileSystem(directory)
 	kc := NewKeeperClient(zkaddr, addr)
+	openFiles := make(map[string]nodefs.File)
+	openFlags := make(map[string]uint32)
 	e := kc.Init()
 	if e != nil {
 		panic(e)
 	}
 
-	return ServerFs{path: directory, addr: addr, fs: fs, kc: kc}
+	return ServerFs{directory, addr, fs, kc, openFiles, openFlags}
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
-	log.Println("Open:", input.Name)
+	fmt.Println("Open:", input.Name)
 	loopbackFile, status := self.fs.Open(input.Name, input.Flags, input.Context)
 	if status == fuse.ENOENT {
-		log.Println("file "+input.Name+" not currently on server")
+		fmt.Println("file "+input.Name+" not currently on server")
 		kmeta, e := self.kc.Get(input.Name)
 		if e != nil {
 			panic(e)
@@ -50,7 +54,7 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		defer newFile.Close()
 
 		buffer := make([]byte, kmeta.Attr.Size)
-		readinput := &FileRead_input{input.Name, output.FileId, 0, len(buffer)}
+		readinput := &FileRead_input{input.Name, 0, len(buffer)}
 		readoutput := &FileRead_output{Dest: buffer}
 		client.FileRead(readinput, readoutput)
 		if readoutput.Status == fuse.OK {
@@ -58,7 +62,7 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		}
 
 		newFile.Close()
-		log.Println("file transferred over")
+		fmt.Println("file transferred over")
 
 		loopbackFile, status = self.fs.Open(input.Name, input.Flags, input.Context)
 
@@ -69,15 +73,15 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		}
 	}
 
-	self.openFiles = append(self.openFiles, loopbackFile)
-	output.FileId = len(self.openFiles)-1
+	self.openFiles[input.Name] = loopbackFile
+	self.openFlags[input.Name] = input.Flags
 	output.Status = status
 	return nil
 }
 
 func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
 	// use the keeper to list all the files in the directory
-	log.Println("opening dir:", input.Name)
+	fmt.Println("opening dir:", input.Name)
 	output.Stream, output.Status = self.fs.OpenDir(input.Name, input.Context)
 	entries, e := self.kc.GetChildrenAttributes(input.Name)
 	if e != nil {
@@ -89,7 +93,7 @@ func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) erro
 }
 
 func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
-	log.Println("GetAttr", input.Name)
+	fmt.Println("GetAttr", input.Name)
 	// fetch the attr from zk
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
@@ -104,20 +108,21 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 }
 
 func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
+	fmt.Println("Rename:",input.Old,"to",input.New)
 	output.Status = self.fs.Rename(input.Old, input.New, input.Context)
 	a, _ := self.fs.GetAttr(input.New, input.Context)
 
 	e := self.kc.Create(input.New, *a)
 	if e != nil {
 		// do nothing for now
-		log.Println("mv error", e)
+		fmt.Println("mv error", e)
 		return e
 	}
 
 	e = self.kc.Remove(input.Old)
 	if e != nil {
 		// do nothing for now
-		log.Println("mv error", e)
+		fmt.Println("mv error", e)
 		return e
 	}
 	return nil
@@ -147,7 +152,7 @@ func (self *ServerFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 }
 
 func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
-	log.Println("Unlink: "+input.Name)
+	fmt.Println("Unlink: "+input.Name)
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
 		return e
@@ -157,7 +162,7 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 		if e != nil {
 			panic(e)
 		}
-		output.Status = self.fs.Unlink(input.Name, input.Context)
+		status := self.fs.Unlink(input.Name, input.Context)
 
 		for _, replicaAddr := range kmeta.Replicas {
 			client := NewClientFs(replicaAddr)
@@ -167,6 +172,8 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 				return e
 			}
 		}
+
+		output.Status = status
 
 	} else {
 		client := NewClientFs(kmeta.Primary)
@@ -181,13 +188,13 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 }
 
 func (self *ServerFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) error {
-	log.Println("ReplicaUnlink:",input.Name)
+	fmt.Println("ReplicaUnlink:",input.Name)
 	output.Status = self.fs.Unlink(input.Name, input.Context)
 	return nil
 }
 
 func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
-	log.Println("Create:", input.Path)
+	fmt.Println("Create:", input.Path)
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
 	a, _ := self.fs.GetAttr(input.Path, input.Context)
 
@@ -196,42 +203,111 @@ func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 	if e != nil {
 		return e
 	}
-	self.openFiles = append(self.openFiles, loopbackFile)
-	output.FileId = len(self.openFiles)-1
+	self.openFiles[input.Path] = loopbackFile
 	output.Status = status
 	return nil
 }
 
 func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) error {
-	log.Println("Read -", "Path:", input.Path,"FileId:",input.FileId)
+	fmt.Println("Read -", "Path:", input.Path)
 	output.Dest = make([]byte, input.BuffLen) // recreates the buffer on server for client/server or replaces orignal for local
-	output.ReadResult, output.Status = self.openFiles[input.FileId].Read(output.Dest, input.Off)
+	output.ReadResult, output.Status = self.openFiles[input.Path].Read(output.Dest, input.Off)
 	return nil
 }
 
 func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
-	log.Println("Write -", "Path:", input.Path,"FileId:",input.FileId)
-	output.Written, output.Status = self.openFiles[input.FileId].Write(input.Data, input.Off)
+	fmt.Println("Write -", "Path:", input.Path)
 
-	// after we have written the file we will go an update the node that we created/modified
-	a, _ := self.fs.GetAttr(input.Path, input.Context)
 	kmeta, e := self.kc.Get(input.Path)
 	if e != nil {
 		return e
 	}
+	if self.addr == kmeta.Primary {
+		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
+
+		written, status := self.openFiles[input.Path].Write(input.Data, input.Off)
+		fmt.Println("written:",written,"status:",status)
+		for _, replicaAddr := range kmeta.Replicas {
+			client := NewClientFs(replicaAddr)
+			client.Connect()
+			e = client.ReplicaFileWrite(input, output)
+			if e != nil {
+				return e
+			}
+		}
+
+		output.Written = written
+		output.Status = status
+
+		// after writing the file we will go an update the node that we created/modified
+		a, _ := self.fs.GetAttr(input.Path, input.Context)
+
+		kmeta.Attr = *a
+		e = self.kc.Set(input.Path, kmeta)
+		if e != nil {
+			return e
+		}
+
+	} else {
+		fmt.Println("Not primary, forwarding request to primary")
+		client := NewClientFs(kmeta.Primary)
+		client.Connect()
+		input.Flags = self.openFlags[input.Path]
+		input.Kmeta = kmeta
+		e = client.PrimaryFileWrite(input, output)
+		if e != nil {
+			return e
+		}
+	}
+
+	return nil
+
+}
+
+func (self *ServerFs) PrimaryFileWrite(input *FileWrite_input, output *FileWrite_output) error {
+	fmt.Println("PrimaryFileWrite:   path:",input.Path,"offset:",input.Off)
+
+	loopbackFile, status := self.fs.Open(input.Path, input.Flags, input.Context)
+	self.openFiles[input.Path] = loopbackFile
+	kmeta := input.Kmeta
+
+	written, status := self.openFiles[input.Path].Write(input.Data, input.Off)
+	fmt.Println("written:",written,"status:",status)
+	for _, replicaAddr := range kmeta.Replicas {
+		client := NewClientFs(replicaAddr)
+		client.Connect()
+		e := client.ReplicaFileWrite(input, output)
+		if e != nil {
+			return e
+		}
+	}
+	output.Written = written
+	output.Status = status
+
+	// after writing the file we will go an update the node that we created/modified
+	a, _ := self.fs.GetAttr(input.Path, input.Context)
 
 	kmeta.Attr = *a
-	e = self.kc.Set(input.Path, kmeta)
+	e := self.kc.Set(input.Path, kmeta)
 	if e != nil {
 		return e
 	}
+	return nil
+}
 
+func (self *ServerFs) ReplicaFileWrite(input *FileWrite_input, output *FileWrite_output) error {
+	fmt.Println("ReplicaWrite -", "Path:", input.Path)
+	output.Written, output.Status = self.openFiles[input.Path].Write(input.Data, input.Off)
+	if output.Status != fuse.OK {
+		fmt.Println("failed:",output.Status)
+	}
 	return nil
 }
 
 func (self *ServerFs) FileRelease(input *FileRelease_input, output *FileRelease_output) error {
-	log.Println("Releasing file", input.Path)
 	/*
+	fmt.Println("Releasing file", input.Path)
+	
 	self.openFiles[input.FileId].Release()
 	//Removes file from open 
 	self.openFiles = append(self.openFiles[:input.FileId], self.openFiles[input.FileId+1:])
