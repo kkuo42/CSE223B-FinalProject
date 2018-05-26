@@ -127,7 +127,7 @@ func (fs *CustomLoopbackFileSystem) OpenDir(name string, context *fuse.Context) 
 
 /* this function was rewritten to pass the custom file */
 func (fs *CustomLoopbackFileSystem) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
-	f, err := os.OpenFile(fs.GetPath(name), int(flags), 0)
+	f, err := os.OpenFile(fs.GetPath(name), os.O_RDWR, 0) // TODO: RESOLVE THIS FIX. RW permissions should not be needed on all files
 	if err != nil {
 		return nil, fuse.ToStatus(err)
 	}
@@ -187,7 +187,7 @@ func (fs *CustomLoopbackFileSystem) Access(name string, mode uint32, context *fu
 }
 
 func (fs *CustomLoopbackFileSystem) Create(path string, flags uint32, mode uint32, context *fuse.Context) (fuseFile nodefs.File, code fuse.Status) {
-	f, err := os.OpenFile(fs.GetPath(path), int(flags)|os.O_CREATE, os.FileMode(mode))
+	f, err := os.OpenFile(fs.GetPath(path), os.O_CREATE|os.O_RDWR, os.FileMode(mode)) // TODO: RESOLVE THIS FIX. RW permissions should not be needed on all files
 	return NewCustomLoopbackFile(f), fuse.ToStatus(err)
 }
 

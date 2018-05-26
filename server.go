@@ -46,22 +46,19 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 			panic(e)
 		}
 		client := NewClientFs(kmeta.Primary)
-		client.Connect()
-		client.Open(input, output)
+		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context}
+		dest := make([]byte, kmeta.Attr.Size)
+		_, readStatus := clientFile.Read(dest, 0)
 
 		newFile, create_status := self.fs.Create(input.Name, input.Flags, kmeta.Attr.Mode, input.Context)
 		if create_status != fuse.OK {
 			panic(create_status)
 		}
-
-		buffer := make([]byte, kmeta.Attr.Size)
-		readinput := &FileRead_input{input.Name, 0, len(buffer)}
-		readoutput := &FileRead_output{Dest: buffer}
-		client.FileRead(readinput, readoutput)
-		if readoutput.Status == fuse.OK {
-			newFile.Write(buffer, 0)
-		}
-
+		
+		if readStatus == fuse.OK {
+			newFile.Write(dest, 0)
+		} else { panic("could not read primary copy") }
+		
 		fmt.Println("file transferred over")
 		loopbackFile = newFile
 		status = create_status
@@ -210,8 +207,15 @@ func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 
 func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) error {
 	fmt.Println("Read -", "Path:", input.Path)
+
 	output.Dest = make([]byte, input.BuffLen) // recreates the buffer on server for client/server or replaces orignal for local
 	output.ReadResult, output.Status = self.openFiles[input.Path].Read(output.Dest, input.Off)
+	// if output.Status != fuse.OK {
+	// 	loopbackFile, _ := self.fs.Open(input.Path, 0, nil)
+	// 	self.openFiles[input.Path] = loopbackFile
+	// 	output.ReadResult, output.Status = self.openFiles[input.Path].Read(output.Dest, input.Off)
+	// }
+	fmt.Println("readStatus ", output.Status)
 	return nil
 }
 
@@ -224,9 +228,9 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 	}
 	if self.addr == kmeta.Primary {
 		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
-
 		written, status := self.openFiles[input.Path].Write(input.Data, input.Off)
 		fmt.Println("written:",written,"status:",status)
+
 		for _, replicaAddr := range kmeta.Replicas {
 			client := NewClientFs(replicaAddr)
 			client.Connect()
@@ -254,7 +258,7 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 		client.Connect()
 		input.Flags = self.openFlags[input.Path]
 		input.Kmeta = kmeta
-		e = client.PrimaryFileWrite(input, output)
+		e = client.FileWrite(input, output)
 		if e != nil {
 			return e
 		}
@@ -262,37 +266,6 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 
 	return nil
 
-}
-
-func (self *ServerFs) PrimaryFileWrite(input *FileWrite_input, output *FileWrite_output) error {
-	fmt.Println("PrimaryFileWrite:   path:",input.Path,"offset:",input.Off)
-
-	loopbackFile, status := self.fs.Open(input.Path, input.Flags, input.Context)
-	self.openFiles[input.Path] = loopbackFile
-	kmeta := input.Kmeta
-
-	written, status := self.openFiles[input.Path].Write(input.Data, input.Off)
-	fmt.Println("written:",written,"status:",status)
-	for _, replicaAddr := range kmeta.Replicas {
-		client := NewClientFs(replicaAddr)
-		client.Connect()
-		e := client.ReplicaFileWrite(input, output)
-		if e != nil {
-			return e
-		}
-	}
-	output.Written = written
-	output.Status = status
-
-	// after writing the file we will go an update the node that we created/modified
-	a, _ := self.fs.GetAttr(input.Path, input.Context)
-
-	kmeta.Attr = *a
-	e := self.kc.Set(input.Path, kmeta)
-	if e != nil {
-		return e
-	}
-	return nil
 }
 
 func (self *ServerFs) ReplicaFileWrite(input *FileWrite_input, output *FileWrite_output) error {
