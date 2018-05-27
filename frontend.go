@@ -46,7 +46,6 @@ func NewFrontendRemotelyBacked(backaddr string) Frontend {
     clientFs := backends[0]
     if backaddr != "" {
 	    clientFs = NewClientFs(backaddr)
-		  log.Printf("Connected to Backend: %v\n", backaddr)
     }
 
     e = clientFs.Connect()
