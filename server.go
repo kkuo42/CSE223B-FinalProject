@@ -2,6 +2,7 @@ package proj
 
 import (
 	"fmt"
+        "time"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -15,11 +16,7 @@ type ServerFs struct {
 	kc *KeeperClient
 	openFiles map[string]nodefs.File
 	openFlags map[string]uint32
-
-        // file/server metadata
-        load uint64
-        readcount map[string]int
-        writecount map[string]int
+        //coord *ServerCoordinator
 }
 
 func NewServerFs(directory, addr string) ServerFs {
@@ -30,23 +27,17 @@ func NewServerFs(directory, addr string) ServerFs {
 	openFiles := make(map[string]nodefs.File)
 	openFlags := make(map[string]uint32)
 
-	readcount := make(map[string]int)
-	writecount := make(map[string]int)
-        load := uint64(0)
+        // initialize keeper, but delay it until after server is served
+        go func() {
+            time.Sleep(time.Second / 2)
+            fmt.Println("init keeper")
+            e := kc.Init()
+            if e != nil {
+                    panic(e)
+            }
+        }()
 
-        // initialize keeper
-	e := kc.Init()
-
-	if e != nil {
-		panic(e)
-	}
-        if e != nil { panic(e) }
-        return ServerFs{directory, addr, fs, kc, openFiles, openFlags, load, readcount, writecount}
-}
-
-func (self *ServerFs) GetLoad(prev uint64, load *uint64) error {
-    *load = self.load
-    return nil
+        return ServerFs{directory, addr, fs, kc, openFiles, openFlags}
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
@@ -73,13 +64,17 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		} else { panic("could not read primary copy") }
 
 		fmt.Println("file transferred over")
-                // new file so add to load
-                self.load += 1
 		loopbackFile = newFile
 		status = create_status
 
 		kmeta.Replicas[self.Addr] = ServerFileMeta{self.Addr, 0, 0}
 		e = self.kc.Set(input.Name, kmeta)
+		if e != nil {
+			panic(e)
+		}
+                // this says we are going to add a replica to this servers
+                // metadata
+		e = self.kc.AddServer(input.Name, true)
 		if e != nil {
 			panic(e)
 		}
@@ -175,9 +170,6 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 			panic(e)
 		}
 		status := self.fs.Unlink(input.Name, input.Context)
-                if self.load > 0 {
-                    self.load -= 1
-                }
 
 		for _, replica := range kmeta.Replicas {
 			client := NewClientFs(replica.Addr)
@@ -205,9 +197,6 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 func (self *ServerFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) error {
 	fmt.Println("ReplicaUnlink:",input.Name)
 	output.Status = self.fs.Unlink(input.Name, input.Context)
-        if self.load > 0 {
-            self.load -= 1
-        }
 	return nil
 }
 
@@ -221,7 +210,6 @@ func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 	if e != nil {
 		return e
 	}
-        self.load += 1
 	self.openFiles[input.Path] = loopbackFile
 	output.Status = status
 	return nil
