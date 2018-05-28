@@ -40,7 +40,7 @@ func main() {
         addr = flag.Arg(1)
     } else {
         // use public ip by default if not specified
-        addr = pubIP()
+        addr = pubIP()+":9898"
     }
     sharepoint := flag.Arg(0)
     port := strings.Split(addr, ":")[1]
