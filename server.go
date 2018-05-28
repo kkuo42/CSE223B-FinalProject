@@ -1,7 +1,6 @@
 package proj
 
 import (
-	// "log"
 	"fmt"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
@@ -11,12 +10,16 @@ import (
 
 type ServerFs struct {
 	path string
-	addr string
+	Addr string
 	fs pathfs.FileSystem
 	kc *KeeperClient
 	openFiles map[string]nodefs.File
 	openFlags map[string]uint32
- 	backends []*ClientFs
+
+        // file/server metadata
+        load uint64
+        readcount map[string]int
+        writecount map[string]int
 }
 
 func NewServerFs(directory, addr string) ServerFs {
@@ -26,14 +29,24 @@ func NewServerFs(directory, addr string) ServerFs {
 	kc := NewKeeperClient(addr)
 	openFiles := make(map[string]nodefs.File)
 	openFlags := make(map[string]uint32)
+
+	readcount := make(map[string]int)
+	writecount := make(map[string]int)
+        load := uint64(0)
+
+        // initialize keeper
 	e := kc.Init()
 
 	if e != nil {
 		panic(e)
 	}
-  backends, e := kc.GetBackends()
-  if e != nil { panic(e) }
-  return ServerFs{directory, addr, fs, kc, openFiles, openFlags, backends}
+        if e != nil { panic(e) }
+        return ServerFs{directory, addr, fs, kc, openFiles, openFlags, load, readcount, writecount}
+}
+
+func (self *ServerFs) GetLoad(prev uint64, load *uint64) error {
+    *load = self.load
+    return nil
 }
 
 func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
@@ -45,7 +58,7 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		if e != nil {
 			panic(e)
 		}
-		client := NewClientFs(kmeta.Primary)
+		client := NewClientFs(kmeta.Primary.Addr)
 		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context}
 		dest := make([]byte, kmeta.Attr.Size)
 		_, readStatus := clientFile.Read(dest, 0)
@@ -54,16 +67,18 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		if create_status != fuse.OK {
 			panic(create_status)
 		}
-		
+
 		if readStatus == fuse.OK {
 			newFile.Write(dest, 0)
 		} else { panic("could not read primary copy") }
-		
+
 		fmt.Println("file transferred over")
+                // new file so add to load
+                self.load += 1
 		loopbackFile = newFile
 		status = create_status
 
-		kmeta.Replicas = append(kmeta.Replicas, self.addr)
+		kmeta.Replicas[self.Addr] = ServerFileMeta{self.Addr, 0, 0}
 		e = self.kc.Set(input.Name, kmeta)
 		if e != nil {
 			panic(e)
@@ -154,15 +169,18 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 	if e != nil {
 		return e
 	}
-	if self.addr == kmeta.Primary {
+	if self.Addr == kmeta.Primary.Addr {
 		e = self.kc.Remove(input.Name)
 		if e != nil {
 			panic(e)
 		}
 		status := self.fs.Unlink(input.Name, input.Context)
+                if self.load > 0 {
+                    self.load -= 1
+                }
 
-		for _, replicaAddr := range kmeta.Replicas {
-			client := NewClientFs(replicaAddr)
+		for _, replica := range kmeta.Replicas {
+			client := NewClientFs(replica.Addr)
 			client.Connect()
 			e = client.ReplicaUnlink(input, output)
 			if e != nil {
@@ -173,7 +191,7 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 		output.Status = status
 
 	} else {
-		client := NewClientFs(kmeta.Primary)
+		client := NewClientFs(kmeta.Primary.Addr)
 		client.Connect()
 		e = client.Unlink(input, output)
 		if e != nil {
@@ -187,6 +205,9 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 func (self *ServerFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) error {
 	fmt.Println("ReplicaUnlink:",input.Name)
 	output.Status = self.fs.Unlink(input.Name, input.Context)
+        if self.load > 0 {
+            self.load -= 1
+        }
 	return nil
 }
 
@@ -200,6 +221,7 @@ func (self *ServerFs) Create(input *Create_input, output *Create_output) error {
 	if e != nil {
 		return e
 	}
+        self.load += 1
 	self.openFiles[input.Path] = loopbackFile
 	output.Status = status
 	return nil
@@ -210,6 +232,13 @@ func (self *ServerFs) FileRead(input *FileRead_input, output *FileRead_output) e
 
 	output.Dest = make([]byte, input.BuffLen) // recreates the buffer on server for client/server or replaces orignal for local
 	output.ReadResult, output.Status = self.openFiles[input.Path].Read(output.Dest, input.Off)
+
+        // increment read count
+        e := self.kc.Inc(input.Path, true)
+        if e != nil {
+            fmt.Errorf("error incrementing read", e)
+            return e
+        }
 	// if output.Status != fuse.OK {
 	// 	loopbackFile, _ := self.fs.Open(input.Path, 0, nil)
 	// 	self.openFiles[input.Path] = loopbackFile
@@ -226,13 +255,13 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 	if e != nil {
 		return e
 	}
-	if self.addr == kmeta.Primary {
+	if self.Addr == kmeta.Primary.Addr {
 		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
 		written, status := self.openFiles[input.Path].Write(input.Data, input.Off)
 		fmt.Println("written:",written,"status:",status)
 
-		for _, replicaAddr := range kmeta.Replicas {
-			client := NewClientFs(replicaAddr)
+		for _, replica := range kmeta.Replicas {
+			client := NewClientFs(replica.Addr)
 			client.Connect()
 			e = client.ReplicaFileWrite(input, output)
 			if e != nil {
@@ -247,6 +276,8 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 		a, _ := self.fs.GetAttr(input.Path, input.Context)
 
 		kmeta.Attr = *a
+                // dont call Inc, would be extra call
+                kmeta.Primary.WriteCount += 1
 		e = self.kc.Set(input.Path, kmeta)
 		if e != nil {
 			return e
@@ -254,7 +285,7 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 
 	} else {
 		fmt.Println("Not primary, forwarding request to primary")
-		client := NewClientFs(kmeta.Primary)
+		client := NewClientFs(kmeta.Primary.Addr)
 		client.Connect()
 		input.Flags = self.openFlags[input.Path]
 		input.Kmeta = kmeta
@@ -272,8 +303,12 @@ func (self *ServerFs) ReplicaFileWrite(input *FileWrite_input, output *FileWrite
 	fmt.Println("ReplicaWrite -", "Path:", input.Path)
 	output.Written, output.Status = self.openFiles[input.Path].Write(input.Data, input.Off)
 	if output.Status != fuse.OK {
-		fmt.Println("failed:",output.Status)
+	    return fmt.Errorf("failed:",output.Status)
 	}
+        e := self.kc.Inc(input.Path, false)
+        if e != nil {
+            return fmt.Errorf("Error incrementing write", e)
+        }
 	return nil
 }
 
@@ -287,9 +322,4 @@ func (self *ServerFs) FileRelease(input *FileRelease_input, output *FileRelease_
 	*/
 	return nil
 }
-
-// assert that ServerFs implements BackendFs
-var _ BackendFs = new(ServerFs)
-
-
 

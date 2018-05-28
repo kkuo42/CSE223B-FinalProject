@@ -31,6 +31,22 @@ func (self *ClientFs) Connect() error {
 	return nil
 }
 
+func (self *ClientFs) GetLoad(input uint64, output *uint64) error {
+	e := self.Connect()
+	if e != nil { return e }
+
+	e = self.conn.Call("BackendFs.GetLoad", input, output)
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.Open", input, output)
+		}
+	}
+
+	return e
+}
+
 func (self *ClientFs) Open(input *Open_input, output *Open_output) error {
 	e := self.Connect()
 	if e != nil { return e }

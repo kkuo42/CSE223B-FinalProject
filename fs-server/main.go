@@ -33,11 +33,16 @@ func pubIP() string {
 func main() {
     // parse args
     flag.Parse()
-    if len(flag.Args()) != 2 {
+    var addr string
+    if len(flag.Args()) < 1 {
         log.Fatal("Usage:\n  fs-server <SHAREPOINT> <SERVERIP>")
+    } else if len(flag.Args()) == 2 {
+        addr = flag.Arg(1)
+    } else {
+        // use public ip by default if not specified
+        addr = pubIP()
     }
     sharepoint := flag.Arg(0)
-    addr := flag.Arg(1)
     port := strings.Split(addr, ":")[1]
 
     // setup loopback filesystem

@@ -9,17 +9,23 @@ import (
         "fmt"
 )
 
+type ServerFileMeta struct {
+    Addr string
+    WriteCount int
+    ReadCount int
+}
+
 // this struct is to maintain all information relative to the keeper
 type KeeperMeta struct {
 	Attr fuse.Attr
-	Primary string
-	Replicas []string
+	Primary ServerFileMeta
+	Replicas map[string]ServerFileMeta
 }
 
 type KeeperClient struct {
 	addr string
 	client *zk.Conn
-        backends []string
+        backends []*ClientFs
 }
 
 type KeeperHandler struct {
@@ -60,31 +66,29 @@ func (k *KeeperClient) Init() error {
             }
         }
 
-        // get the list of current backends
-        // TODO when a backend drops about refresh the backends
-        backends, _, _, e := k.client.ChildrenW("/alive")
+        // after getting all backends set up the clients for each
+        backs, e := k.GetBackends()
         if e != nil {
-                log.Fatalf("error getting alive nodes", e)
+                log.Fatalf("error getting backends", e)
                 return e
         }
-        k.backends = backends
+        k.backends = backs
+
 	return nil
 }
-
-/*
-func (k *KeeperClient) WatchAlive() {
-
-}
-*/
 
 func (k *KeeperClient) GetBackends() ([]*ClientFs, error) {
     // this gets /alive and pings them in order, returning a list of addrs
     // in the order that they respond.
-    // TODO may need to exclude this server (addr)?
+    backends, _, _, e := k.client.ChildrenW("/alive")
+    if e != nil {
+            log.Fatalf("error getting alive nodes", e)
+            return nil, e
+    }
     done := make(chan bool)
-    backends := []*ClientFs{}
+    backs := []*ClientFs{}
 
-    for _, addr := range k.backends {
+    for _, addr := range backends {
         go func(a string) {
             c := NewClientFs(a)
             // if it is not this server then connect
@@ -94,19 +98,19 @@ func (k *KeeperClient) GetBackends() ([]*ClientFs, error) {
                         log.Println("keeper couldnt connect to backend", addr)
                 }
             }
-            backends = append(backends, c)
+            backs = append(backs, c)
             done <- true
         }(addr)
     }
 
-    for i := 0; i < len(k.backends); i++ {
+    for i := 0; i < len(backends); i++ {
         <-done
     }
 
-    if len(backends) == 0 {
+    if len(backs) == 0 {
         return nil, fmt.Errorf("No backends online yet\n")
     }
-    return backends, nil
+    return backs, nil
 }
 
 func (k *KeeperClient) Get(path string) (KeeperMeta, error) {
@@ -169,7 +173,12 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 }
 
 func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
-	kmeta := KeeperMeta{Primary: k.addr, Attr: attr}
+        // brand new file, initialize new file metadata
+        primary := ServerFileMeta{k.addr, 0, 0}
+        // pick a replica on the median
+        replica := k.backends[len(k.backends)/2].Addr
+        replicas := map[string]ServerFileMeta{replica: ServerFileMeta{replica, 0, 0}}
+        kmeta := KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
 	d, e := json.Marshal(&kmeta)
 	if e != nil {
 		return e
@@ -207,4 +216,28 @@ func (k *KeeperClient) RemoveDir(path string) error {
 		}
 	}
 	return nil
+}
+
+func (k *KeeperClient) Inc(path string, read bool) error {
+    kmeta, e := k.Get(path)
+    if e != nil { return e }
+    // if this server is not the primary go increment in replica
+    if k.addr != kmeta.Primary.Addr {
+        sfm := kmeta.Replicas[k.addr]
+        if read {
+            sfm.ReadCount += 1
+        } else {
+            sfm.WriteCount += 1
+        }
+        kmeta.Replicas[k.addr] = sfm
+    } else {
+        if read {
+            kmeta.Primary.ReadCount += 1
+        } else {
+            kmeta.Primary.WriteCount += 1
+        }
+    }
+    e = k.Set(path, kmeta)
+    if e != nil { return e }
+    return nil
 }
