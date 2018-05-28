@@ -74,7 +74,7 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		}
                 // this says we are going to add a replica to this servers
                 // metadata
-		e = self.kc.AddServer(input.Name, true)
+		e = self.kc.AddServerMeta(input.Name, true)
 		if e != nil {
 			panic(e)
 		}
@@ -116,23 +116,52 @@ func (self *ServerFs) GetAttr(input *GetAttr_input, output *GetAttr_output) erro
 
 func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
 	fmt.Println("Rename:",input.Old,"to",input.New)
-	output.Status = self.fs.Rename(input.Old, input.New, input.Context)
-	a, _ := self.fs.GetAttr(input.New, input.Context)
 
-	e := self.kc.Create(input.New, *a)
-	if e != nil {
-		// do nothing for now
-		fmt.Println("mv error", e)
-		return e
-	}
+        kmeta, e := self.kc.Get(input.Old)
+        if self.Addr == kmeta.Primary.Addr {
+            // if this node is the primary go alert everyone else
+            for _, replica := range kmeta.Replicas {
+                client := NewClientFs(replica.Addr)
+                client.Connect()
+                e = client.ReplicaRename(input, output)
+                if e != nil { return e }
+            }
 
-	e = self.kc.Remove(input.Old)
-	if e != nil {
-		// do nothing for now
-		fmt.Println("mv error", e)
-		return e
-	}
+            // go and move yourself
+            output.Status = self.fs.Rename(input.Old, input.New, input.Context)
+            a, _ := self.fs.GetAttr(input.New, input.Context)
+            e = self.kc.Create(input.New, *a)
+            if e != nil {
+                    // do nothing for now
+                    fmt.Println("mv error", e)
+                    return e
+            }
+
+            e = self.kc.Remove(input.Old)
+            if e != nil {
+                    // do nothing for now
+                    fmt.Println("mv error", e)
+                    return e
+            }
+        } else {
+            // node is not primary, tell the primary to do its job
+            client := NewClientFs(kmeta.Primary.Addr)
+            client.Connect()
+            e = client.Rename(input, output)
+            if e != nil { return e }
+        }
+
 	return nil
+}
+
+func (self *ServerFs) ReplicaRename(input *Rename_input, output *Rename_output) error {
+	output.Status = self.fs.Rename(input.Old, input.New, input.Context)
+        // add replica for new path and remove old one.
+        e := self.kc.AddServerMeta(input.New, true)
+        if e != nil { return e }
+        e = self.kc.RemoveServerMeta(input.Old, true)
+        if e != nil { return e }
+        return nil
 }
 
 func (self *ServerFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
@@ -165,12 +194,7 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 		return e
 	}
 	if self.Addr == kmeta.Primary.Addr {
-		e = self.kc.Remove(input.Name)
-		if e != nil {
-			panic(e)
-		}
-		status := self.fs.Unlink(input.Name, input.Context)
-
+                // alert all replicas then delete
 		for _, replica := range kmeta.Replicas {
 			client := NewClientFs(replica.Addr)
 			client.Connect()
@@ -179,7 +203,15 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 				return e
 			}
 		}
-
+		e = self.kc.Remove(input.Name)
+		if e != nil {
+                    return e
+		}
+                e = self.kc.RemoveServerMeta(input.Name, false)
+		if e != nil {
+                    return e
+		}
+		status := self.fs.Unlink(input.Name, input.Context)
 		output.Status = status
 
 	} else {
@@ -196,6 +228,9 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 
 func (self *ServerFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) error {
 	fmt.Println("ReplicaUnlink:",input.Name)
+        // need to remove that we have a replica of this data
+        e := self.kc.RemoveServerMeta(input.Name, true)
+        if e != nil { return e }
 	output.Status = self.fs.Unlink(input.Name, input.Context)
 	return nil
 }
@@ -248,6 +283,7 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 		written, status := self.openFiles[input.Path].Write(input.Data, input.Off)
 		fmt.Println("written:",written,"status:",status)
 
+                fmt.Println("REPLICAS", kmeta.Replicas)
 		for _, replica := range kmeta.Replicas {
 			client := NewClientFs(replica.Addr)
 			client.Connect()

@@ -10,8 +10,8 @@ import (
 )
 
 type ServerMeta struct {
-    primaryFor []string
-    replicaFor []string
+    primaryFor map[string]string
+    replicaFor map[string]string
 }
 
 type ServerFileMeta struct {
@@ -67,7 +67,7 @@ func (k *KeeperClient) Init() error {
         // if a server is joining (addr != "") then create the node in zk 
         if k.addr != "" {
             _, err := k.client.Create("/alive/"+k.addr, []byte(k.addr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
-            empty := []string{}
+            empty := map[string]string{}
             sm := ServerMeta{empty, empty}
             d, e := json.Marshal(&sm)
             if e != nil { return e }
@@ -236,6 +236,7 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
 	if e != nil {
 		return e
 	}
+        k.AddServerMeta(path, true)
 	return nil
 }
 
@@ -295,16 +296,36 @@ func (k *KeeperClient) EditServer(path string, replica bool) error {
 }*/
 
 // add a primary or a replica to a server's metadata
-func (k *KeeperClient) AddServer(path string, replica bool) error {
+func (k *KeeperClient) AddServerMeta(path string, replica bool) error {
     smeta, _, e := k.client.Get("/servermeta/" + path)
     if e != nil { return e }
+
     var sm ServerMeta
     e = json.Unmarshal(smeta, &sm)
     if e != nil { return e }
     if replica {
-        sm.replicaFor = append(sm.replicaFor, path)
+        sm.replicaFor[path] = path
     } else {
-        sm.primaryFor = append(sm.replicaFor, path)
+        sm.primaryFor[path] = path
+    }
+    smdata, e := json.Marshal(&sm)
+    if e != nil { return e }
+    _, e = k.client.Set("/alivemeta/"+k.addr, smdata, -1)
+    if e != nil { return e }
+    return nil
+}
+
+func (k *KeeperClient) RemoveServerMeta(path string, replica bool) error {
+    smeta, _, e := k.client.Get("/servermeta/" + path)
+    if e != nil { return e }
+
+    var sm ServerMeta
+    e = json.Unmarshal(smeta, &sm)
+    if e != nil { return e }
+    if replica {
+        delete(sm.replicaFor, path)
+    } else {
+        delete(sm.primaryFor, path)
     }
     smdata, e := json.Marshal(&sm)
     if e != nil { return e }
