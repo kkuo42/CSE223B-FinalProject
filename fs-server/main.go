@@ -6,6 +6,7 @@ import (
 
     "proj"
 
+    "time"
     "net/rpc"
     "net"
     "net/http"
@@ -33,26 +34,33 @@ func pubIP() string {
 func main() {
     // parse args
     flag.Parse()
-    if len(flag.Args()) != 2 {
-        log.Fatal("Usage:\n  fs-server <SHAREPOINT> <SERVERIP>")
+    if len(flag.Args()) != 3 {
+        log.Fatal("Usage:\n  fs-server <SHAREPOINT> <COORD ADDR> <SERVERFS ADDR>")
     }
     sharepoint := flag.Arg(0)
-    addr := flag.Arg(1)
-    port := strings.Split(addr, ":")[1]
+    coordaddr := flag.Arg(1)
+    fsaddr := flag.Arg(2)
 
-    // setup loopback filesystem
-    nfs := proj.NewServerFs(sharepoint, addr)
+    port := strings.Split(coordaddr, ":")[1]
+
+    // setup server coordinator 
+    nsc := proj.NewServerCoordinator(sharepoint, coordaddr, fsaddr)
+    go func() {
+        // wait for this to serve before keeper init
+        time.Sleep(time.Second / 2)
+        nsc.Init()
+    }()
 
     // setup rpc server
     server := rpc.NewServer()
-    e := server.RegisterName("BackendFs", &nfs)
+    e := server.RegisterName("BackendFs", nsc)
     l, e := net.Listen ("tcp",":"+port)
     if e != nil {
         log.Fatal(e)
     }
 
     // serve
-    log.Printf("key-value store serving directory \"%s\" on %s", sharepoint, addr)
+    log.Printf("key-value store serving directory \"%s\" on %s", sharepoint, coordaddr)
     e = http.Serve(l, server)
     if e != nil {
         log.Fatal(e)

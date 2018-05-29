@@ -29,11 +29,11 @@ func NewFrontendRemotelyBacked(backaddr string) Frontend {
     fs := pathfs.NewDefaultFileSystem()
 
     // "" indicates this is a frontend and to not add to /alive
-    kc := NewKeeperClient("")
+    kc := NewKeeperClient("", "")
     e := kc.Init()
     if e != nil { panic(e) }
 
-    backends, e := kc.GetBackends()
+    backends, _, e := kc.GetBackends()
     // TODO watch alive for changes in state and update list of clients
     if e != nil {
 	    log.Fatalf("error getting alive nodes: %v\n", e)

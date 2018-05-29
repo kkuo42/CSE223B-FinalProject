@@ -22,7 +22,7 @@ setup_servers() {
 	# pair 0
 	mkdir data/from0 data/to0
 
-	fs-server data/from0 localhost:9500 >> logs/server0_log.txt &
+	fs-server data/from0 localhost:9500 localhost:9600 >> logs/server0_log.txt &
 	server0PID=$!
 	sleep 1
 	echo
@@ -44,7 +44,7 @@ setup_servers() {
 	# pair 1
 	mkdir data/from1 data/to1
 
-	fs-server data/from1 localhost:9501 >> logs/server1_log.txt&
+	fs-server data/from1 localhost:9501 localhost:9601 >> logs/server1_log.txt&
 	server1PID=$!
 	sleep 1
 	echo
