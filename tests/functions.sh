@@ -62,6 +62,29 @@ setup_servers() {
 	    echo
 	    exit 1
 	fi
+
+        # pair 2
+	mkdir data/from2 data/to2
+
+	fs-server data/from2 localhost:9502 >> logs/server2_log.txt&
+	server2PID=$!
+	sleep 1
+	echo
+
+	fs-front data/to2 localhost:9502 >> logs/front2_log.txt&
+	front2PID=$!
+	sleep 1
+	echo
+
+	if !( ( ps -p $server2PID > /dev/null ) && ( ps -p $front2PID > /dev/null ) )
+	then
+	    stop_jobs
+		echo
+	    echo "Failed to lauch a client/server pair 2"
+	    echo
+	    exit 1
+	fi
+
 }
 
 # teardown func
@@ -70,17 +93,21 @@ stop_jobs() {
 	zookeeper-3.4.12/bin/zkServer.sh stop
 	kill $server0PID
 	kill $server1PID
+	kill $server2PID
 	kill $front0PID
 	kill $front1PID
+	kill $front2PID
     #OSX Unmount
     unamestr=`uname`
     if [[ "$unamestr" == 'Darwin' ]]; then
         echo "OSX UNMOUNT"
         umount data/to0
         umount data/to1
+        umount data/to2
     else 
         fusermount -u data/to0
         fusermount -u data/to1
+        fusermount -u data/to2
     fi
 	echo "killed all processes"
 }

@@ -30,6 +30,7 @@ func main() {
 
     // setup frontend filesystem
     frontend := proj.NewFrontendRemotelyBacked(backaddr) // remote
+    frontend.Init()
     nfs := pathfs.NewPathNodeFs(&frontend, nil)
 
     // mount

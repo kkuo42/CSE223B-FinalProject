@@ -13,7 +13,7 @@ echo "writing a to data/to0/a"
 echo -n "a" > data/to0/a
 sleep 1
 assertExist "data/from0/a"
-assertNotExist "data/from1/a"
+assertExist "data/from1/a"
 assertExist "data/to0/a"
 assertExist "data/to1/a"
 echo "rm data/to0/a"
@@ -29,7 +29,7 @@ echo "writing a to data/to0/a"
 echo -n "a" > data/to0/a
 sleep 1
 assertExist "data/from0/a"
-assertNotExist "data/from1/a"
+assertExist "data/from1/a"
 assertExist "data/to0/a"
 assertExist "data/to1/a"
 echo "rm data/to1/a"
@@ -45,7 +45,7 @@ echo "writing a to data/to0/a"
 echo -n "a" > data/to0/a
 sleep 1
 assertExist "data/from0/a"
-assertNotExist "data/from1/a"
+assertExist "data/from1/a"
 assertExist "data/to0/a"
 assertExist "data/to1/a"
 echo "cat data/to1/a"
@@ -68,7 +68,7 @@ echo "writing a to data/to0/a"
 echo -n "a" > data/to0/a
 sleep 1
 assertExist "data/from0/a"
-assertNotExist "data/from1/a"
+assertExist "data/from1/a"
 assertExist "data/to0/a"
 assertExist "data/to1/a"
 echo "cat data/to1/a"

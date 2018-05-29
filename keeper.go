@@ -10,8 +10,8 @@ import (
 )
 
 type ServerMeta struct {
-    primaryFor map[string]string
-    replicaFor map[string]string
+    PrimaryFor map[string]string
+    ReplicaFor map[string]string
 }
 
 type ServerFileMeta struct {
@@ -68,7 +68,7 @@ func (k *KeeperClient) Init() error {
         if k.addr != "" {
             _, err := k.client.Create("/alive/"+k.addr, []byte(k.addr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
             empty := map[string]string{}
-            sm := ServerMeta{empty, empty}
+            sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
             d, e := json.Marshal(&sm)
             if e != nil { return e }
             _, err = k.client.Create("/alivemeta/"+k.addr, d, int32(0), zk.WorldACL(zk.PermAll))
@@ -85,32 +85,32 @@ func (k *KeeperClient) Init() error {
                 return e
         }
         k.backends = backs
-        go k.Watch()
+        go k.Watch(HandleFail)
 	return nil
 }
 
-func (k *KeeperClient) Watch() {
+type WatchHandler func([]*ClientFs, []*ClientFs) error
+
+func (k *KeeperClient) Watch(fail WatchHandler) {
     for {
-        backs, stat, watch, e := k.client.ChildrenW("/alive")
+        backs, _, watch, e := k.client.ChildrenW("/alive")
         if e != nil { panic("some real bad happened") }
-        // TODO probably should go and look at all nodes to avoid corner cases.. kind of ugly.
         if len(backs) < len(k.backends) {
-            e = k.HandleFail()
+            old := k.backends
+            k.UpdateBackends()
+            e = fail(old, k.backends)
         } else if len(backs) > len(k.backends) {
             fmt.Println("node join")
             e = k.UpdateBackends()
             if e != nil { panic("some real bad happened") }
         }
-        blah := <-watch
-        fmt.Println("blah data with stat", blah, stat)
+        <-watch
     }
 }
 
-func (k *KeeperClient) HandleFail() error {
+func HandleFail(old, curr []*ClientFs) error {
     fmt.Println("node failure")
-    e := k.UpdateBackends()
-    if e != nil { panic("something real bad happened") }
-    return e
+    return nil
 }
 
 func (k *KeeperClient) GetBackends() ([]*ClientFs, error) {
@@ -176,6 +176,13 @@ func (k *KeeperClient) Set(path string, data KeeperMeta) error {
 	return nil
 }
 
+func (k *KeeperClient) GetWatch(watch string) (<-chan zk.Event, error) {
+    _, _, w, e := k.client.ChildrenW(watch)
+    fmt.Println(e)
+    if e != nil { return nil, e }
+    return w, e
+}
+
 func (k *KeeperClient) GetChildren(path string) ([]string, error) {
 	// if in the root directory don't add /
 	inputstr := "/data"
@@ -236,7 +243,7 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
 	if e != nil {
 		return e
 	}
-        k.AddServerMeta(path, true)
+        k.AddServerMeta(path, false)
 	return nil
 }
 
@@ -291,41 +298,45 @@ func (k *KeeperClient) Inc(path string, read bool) error {
     return nil
 }
 
-/*
-func (k *KeeperClient) EditServer(path string, replica bool) error {
-}*/
-
 // add a primary or a replica to a server's metadata
 func (k *KeeperClient) AddServerMeta(path string, replica bool) error {
-    smeta, _, e := k.client.Get("/servermeta/" + path)
-    if e != nil { return e }
+    smeta, _, e := k.client.Get("/alivemeta/" + k.addr)
+    if e != nil { return e}
 
     var sm ServerMeta
     e = json.Unmarshal(smeta, &sm)
     if e != nil { return e }
     if replica {
-        sm.replicaFor[path] = path
+        if sm.ReplicaFor[path] == "" {
+            sm.ReplicaFor = map[string]string{path: path}
+        } else {
+            sm.ReplicaFor[path] = path
+        }
     } else {
-        sm.primaryFor[path] = path
+        if sm.PrimaryFor[path] == "" {
+            sm.PrimaryFor = map[string]string{path: path}
+        } else {
+            sm.PrimaryFor[path] = path
+        }
     }
-    smdata, e := json.Marshal(&sm)
-    if e != nil { return e }
+    smdata, e := json.Marshal(sm)
+    if e != nil { fmt.Println("marshal error", e); return e }
     _, e = k.client.Set("/alivemeta/"+k.addr, smdata, -1)
-    if e != nil { return e }
+    if e != nil { fmt.Println("set error", e) ;return e }
     return nil
 }
 
 func (k *KeeperClient) RemoveServerMeta(path string, replica bool) error {
-    smeta, _, e := k.client.Get("/servermeta/" + path)
+    smeta, _, e := k.client.Get("/alivemeta/" + k.addr)
     if e != nil { return e }
 
     var sm ServerMeta
     e = json.Unmarshal(smeta, &sm)
     if e != nil { return e }
     if replica {
-        delete(sm.replicaFor, path)
+        delete(sm.ReplicaFor, path)
     } else {
-        delete(sm.primaryFor, path)
+        delete(sm.PrimaryFor, path)
     }
     smdata, e := json.Marshal(&sm)
     if e != nil { return e }

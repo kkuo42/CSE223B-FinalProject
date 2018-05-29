@@ -1,9 +1,11 @@
 package proj
 
 import (
+        "os"
 	"fmt"
         "time"
 	"encoding/gob"
+        "path/filepath"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -54,6 +56,11 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 		dest := make([]byte, kmeta.Attr.Size)
 		_, readStatus := clientFile.Read(dest, 0)
 
+                // before we create this file we need to make sure the directory
+                // to create it in exists
+                test := self.dirCreate(input.Name, 0755, input.Context)
+                fmt.Println(test)
+
 		newFile, create_status := self.fs.Create(input.Name, input.Flags, kmeta.Attr.Mode, input.Context)
 		if create_status != fuse.OK {
 			panic(create_status)
@@ -84,6 +91,22 @@ func (self *ServerFs) Open(input *Open_input, output *Open_output) error {
 	self.openFlags[input.Name] = input.Flags
 	output.Status = status
 	return nil
+}
+
+func (self *ServerFs) dirCreate(path string, mode uint32, context *fuse.Context) bool {
+    fmt.Println("recursively creating", path)
+    dirpath := filepath.Dir(path)
+    if _, err := os.Stat(dirpath); err == nil {
+        // if the path exists then return
+        return true
+    }
+    splitpath, _ := filepath.Split(dirpath)
+    npath := splitpath[:len(splitpath)]
+    if self.dirCreate(npath, mode, context) {
+        // create this and return
+        self.fs.Mkdir(npath, mode, context)
+    }
+    return self.dirCreate(npath, mode, context)
 }
 
 func (self *ServerFs) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
@@ -124,7 +147,7 @@ func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
                 client := NewClientFs(replica.Addr)
                 client.Connect()
                 e = client.ReplicaRename(input, output)
-                if e != nil { return e }
+                if e != nil { fmt.Println("replica rename problem"); return e }
             }
 
             // go and move yourself
@@ -143,6 +166,7 @@ func (self *ServerFs) Rename(input *Rename_input, output *Rename_output) error {
                     fmt.Println("mv error", e)
                     return e
             }
+            self.kc.RemoveServerMeta(input.Old, false)
         } else {
             // node is not primary, tell the primary to do its job
             client := NewClientFs(kmeta.Primary.Addr)
@@ -200,15 +224,18 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 			client.Connect()
 			e = client.ReplicaUnlink(input, output)
 			if e != nil {
+                            fmt.Println("replica unlink error")
 				return e
 			}
 		}
 		e = self.kc.Remove(input.Name)
 		if e != nil {
+                            fmt.Println("replica unlink error")
                     return e
 		}
                 e = self.kc.RemoveServerMeta(input.Name, false)
 		if e != nil {
+                            fmt.Println("replica unlink error")
                     return e
 		}
 		status := self.fs.Unlink(input.Name, input.Context)
@@ -219,6 +246,7 @@ func (self *ServerFs) Unlink(input *Unlink_input, output *Unlink_output) error {
 		client.Connect()
 		e = client.Unlink(input, output)
 		if e != nil {
+                            fmt.Println("replica unlink error")
 			panic(e)
 		}
 	}
@@ -230,7 +258,7 @@ func (self *ServerFs) ReplicaUnlink(input *Unlink_input, output *Unlink_output) 
 	fmt.Println("ReplicaUnlink:",input.Name)
         // need to remove that we have a replica of this data
         e := self.kc.RemoveServerMeta(input.Name, true)
-        if e != nil { return e }
+        if e != nil { fmt.Println("replica unlink error"); return e }
 	output.Status = self.fs.Unlink(input.Name, input.Context)
 	return nil
 }
@@ -279,11 +307,10 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 		return e
 	}
 	if self.Addr == kmeta.Primary.Addr {
-		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
+		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off,"data:",input.Data)
 		written, status := self.openFiles[input.Path].Write(input.Data, input.Off)
 		fmt.Println("written:",written,"status:",status)
 
-                fmt.Println("REPLICAS", kmeta.Replicas)
 		for _, replica := range kmeta.Replicas {
 			client := NewClientFs(replica.Addr)
 			client.Connect()
@@ -325,11 +352,15 @@ func (self *ServerFs) FileWrite(input *FileWrite_input, output *FileWrite_output
 
 func (self *ServerFs) ReplicaFileWrite(input *FileWrite_input, output *FileWrite_output) error {
 	fmt.Println("ReplicaWrite -", "Path:", input.Path)
+        // before writing lets open the file
+        fi := Open_input{input.Path, input.Flags, input.Context}
+        e := self.Open(&fi, &Open_output{})
+        if e != nil { return e }
 	output.Written, output.Status = self.openFiles[input.Path].Write(input.Data, input.Off)
 	if output.Status != fuse.OK {
 	    return fmt.Errorf("failed:",output.Status)
 	}
-        e := self.kc.Inc(input.Path, false)
+        e = self.kc.Inc(input.Path, false)
         if e != nil {
             return fmt.Errorf("Error incrementing write", e)
         }
@@ -346,4 +377,3 @@ func (self *ServerFs) FileRelease(input *FileRelease_input, output *FileRelease_
 	*/
 	return nil
 }
-
