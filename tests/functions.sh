@@ -101,7 +101,7 @@ assertFile() {
 		echo "PASSED assertFile. $1 contents: $2"
 	else
 		rm data/temp
-		echo "FAILED assertFile. $1 contents: $2"
+		echo "FAILED assertFile. $1 contents: `cat $1 | sed 's/;$//'`. expected: $2"
 		echo "Exiting."
 		echo
 		stop_jobs
