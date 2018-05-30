@@ -43,7 +43,8 @@ func (self *ServerCoordinator) Init() error {
 
 func (self *ServerCoordinator) Watch() error {
     for {
-        watch, e := self.kc.AliveWatch()
+        // might want to use backs
+        _, watch, e := self.kc.AliveWatch()
         if e != nil { return e }
         // something changed so go update backend maps
         servercoords, serverfsm, e := self.kc.GetBackendMaps()
@@ -65,7 +66,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
             if e != nil {
                     panic(e)
             }
-            client := self.servercoords[kmeta.Primary]
+            client := self.servercoords[kmeta.Primary.Addr]
             clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context}
             dest := make([]byte, kmeta.Attr.Size)
             _, readStatus := clientFile.Read(dest, 0)
@@ -80,6 +81,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
             if readStatus == fuse.OK {
                 fi := FileWrite_input{input.Name, dest, 0, input.Context, input.Flags, kmeta}
                 fo := FileWrite_output{}
+                fmt.Println("about to write file")
                 e = self.fs.FileWrite(&fi, &fo)
             } else { panic("could not read primary copy") }
             fmt.Println("file transferred over")
@@ -90,7 +92,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
             if e != nil {
                     panic(e)
             }
-            e = self.kc.AddServerMeta(input.Name, true)
+            e = self.kc.AddServerMeta(input.Name, self.fsaddr, true)
             output.Status = status
 	}
 	return nil
@@ -141,7 +143,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 		fmt.Println("mv error", e)
 		return e
 	}
-        self.kc.RemoveServerMeta(input.Old, false)
+        self.kc.RemoveServerMeta(input.Old, self.Addr, false)
 	return nil
 }
 
@@ -184,7 +186,7 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
                     self.kc.RemoveServerMeta(input.Name, replica.Addr, true)
 		}
 	} else {
-                client := self.servercoords[kmeta.Primary]
+                client := self.servercoords[kmeta.Primary.Addr]
 		e = client.Unlink(input, output)
 		if e != nil {
 			panic(e)
@@ -217,13 +219,12 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 	if e != nil {
 		return e
 	}
-	if self.Addr == kmeta.Primary {
+	if self.Addr == kmeta.Primary.Addr {
 		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
                 self.fs.FileWrite(input, output)
 
-		for _, replicaAddr := range kmeta.Replicas {
-                        fmt.Println("clients", self.serverfsm, replicaAddr)
-			client := self.serverfsm[replicaAddr]
+		for _, replica:= range kmeta.Replicas {
+			client := self.serverfsm[replica.Addr]
 			e = client.FileWrite(input, output)
 			if e != nil {
 				return e
@@ -238,7 +239,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 
 	} else {
 		fmt.Println("Not primary, forwarding request to primary coordinator")
-                client := self.servercoords[kmeta.Primary]
+                client := self.servercoords[kmeta.Primary.Addr]
 		input.Kmeta = kmeta
 		e = client.FileWrite(input, output)
 		if e != nil {

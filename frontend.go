@@ -42,7 +42,7 @@ func (self *Frontend) Init() {
 
 func (self *Frontend) WatchBacks() {
     for {
-        watch, e := self.kc.GetWatch("/alive")
+        watch, e := self.kc.GetWatch("/alivecoord")
         fmt.Println("change in servers happened... picking a new one")
         if e != nil { panic(e) }
         self.RefreshClient()

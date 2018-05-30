@@ -69,30 +69,25 @@ func (k *KeeperClient) Init() error {
             sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
             d, e := json.Marshal(&sm)
             if e != nil { return e }
-            _, err = k.client.Create("/alivemeta/"+k.addr, d, int32(0), zk.WorldACL(zk.PermAll))
+            _, err = k.client.Create("/alivemeta/"+k.coordaddr, d, int32(0), zk.WorldACL(zk.PermAll))
+            _, err = k.client.Create("/alivemeta/"+k.fsaddr, d, int32(0), zk.WorldACL(zk.PermAll))
             if err != nil {
                     log.Fatalf("error creating node in zkserver")
                     return err
             }
         }
 
-        // after getting all backends set up the clients for each
-        backs, e := k.GetBackends()
-        if e != nil {
-                log.Fatalf("error getting backends", e)
-                return e
-        }
         go k.Watch()
 	return nil
 }
 
 func (k *KeeperClient) Watch() {
     for {
-        watch, e := k.AliveWatch()
+        backs, watch, e := k.AliveWatch()
         if e != nil { panic(e) }
-        if len(backs) < len(k.backends) {
+        if len(backs) < len(k.serverfs) {
             k.UpdateBackends()
-        } else if len(backs) > len(k.backends) {
+        } else if len(backs) > len(k.serverfs) {
             k.UpdateBackends()
         }
         <-watch
@@ -100,9 +95,9 @@ func (k *KeeperClient) Watch() {
 }
 
 
-func (k *KeeperClient) AliveWatch() (<-chan zk.Event, error) {
-    _, _, watch, e := k.client.ChildrenW("/alivecoord")
-    return watch, e
+func (k *KeeperClient) AliveWatch() ([]string, <-chan zk.Event, error) {
+    backs, _, watch, e := k.client.ChildrenW("/alivecoord")
+    return backs, watch, e
 }
 
 func (k *KeeperClient) GetBackendMaps() (map[string]*ClientFs, map[string]*ClientFs, error) {
@@ -259,9 +254,9 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
         var kmeta KeeperMeta
         if replica != k.fsaddr {
             replicas := map[string]ServerFileMeta{replica: ServerFileMeta{replica, 0, 0}}
-            kmeta = KeeperMeta{Primary: k.coordaddr, Replicas: replicas, Attr: attr}
+            kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
         } else {
-            kmeta = KeeperMeta{Primary: k.coordaddr, Attr: attr}
+            kmeta = KeeperMeta{Primary: primary, Attr: attr}
         }
 	d, e := json.Marshal(&kmeta)
 	if e != nil {
@@ -272,7 +267,8 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
 	if e != nil {
 		return e
 	}
-        k.AddServerMeta(path, false)
+        k.AddServerMeta(path, k.coordaddr, false)
+        k.AddServerMeta(path, replica, true)
 	return nil
 }
 
@@ -307,14 +303,14 @@ func (k *KeeperClient) Inc(path string, read bool) error {
     kmeta, e := k.Get(path)
     if e != nil { return e }
     // if this server is not the primary go increment in replica
-    if k.addr != kmeta.Primary.Addr {
-        sfm := kmeta.Replicas[k.addr]
+    if k.coordaddr != kmeta.Primary.Addr {
+        sfm := kmeta.Replicas[k.fsaddr]
         if read {
             sfm.ReadCount += 1
         } else {
             sfm.WriteCount += 1
         }
-        kmeta.Replicas[k.addr] = sfm
+        kmeta.Replicas[k.fsaddr] = sfm
     } else {
         if read {
             kmeta.Primary.ReadCount += 1

@@ -66,7 +66,7 @@ setup_servers() {
         # pair 2
 	mkdir data/from2 data/to2
 
-	fs-server data/from2 localhost:9502 >> logs/server2_log.txt&
+	fs-server data/from2 localhost:9502 localhost:9602 >> logs/server2_log.txt&
 	server2PID=$!
 	sleep 1
 	echo
