@@ -36,11 +36,11 @@ assertFile data/to0/a "ab"
 assertFile data/to1/a "ab"
 
 echo "writing c to data/to0/c"
-echo -n "c" > data/to0/c
+echo "c" > data/to0/c
 sleep 1
 
 echo "appending d to data/to1/c"
-echo -n "d" >> data/to1/c
+echo "d" >> data/to1/c
 sleep 1
 assertFile data/from0/c "cd"
 assertFile data/from1/c "cd"

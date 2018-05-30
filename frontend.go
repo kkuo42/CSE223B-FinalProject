@@ -33,7 +33,7 @@ func NewFrontendRemotelyBacked(backaddr string) Frontend {
 
 func (self *Frontend) Init() {
     // "" indicates this is a frontend and to not add to /alive
-    self.kc = NewKeeperClient("")
+    self.kc = NewKeeperClient("", "")
     e := self.kc.Init()
     if e != nil { panic(e) }
 
@@ -51,7 +51,7 @@ func (self *Frontend) WatchBacks() {
 }
 
 func (self *Frontend) RefreshClient() error {
-    backends, e := self.kc.GetBackends()
+    backends, _, e := self.kc.GetBackends()
     if e != nil { return e }
     if self.backpref != "" {
         // attempt to connect to preferred back

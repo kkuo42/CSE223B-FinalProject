@@ -28,23 +28,20 @@ type KeeperMeta struct {
 }
 
 type KeeperClient struct {
-	addr string
+	coordaddr string
+	fsaddr string
 	client *zk.Conn
-        backends []*ClientFs
         serverMeta ServerMeta
+        serverfs []*ClientFs
+        servercoords []*ClientFs
 }
 
-type KeeperHandler struct {
-	// TODO, when servers go down/up/move 
-}
-
-func NewKeeperClient(addr string) *KeeperClient {
-	return &KeeperClient{addr: addr}
+func NewKeeperClient(coordaddr, fsaddr string) *KeeperClient {
+    return &KeeperClient{coordaddr: coordaddr, fsaddr: fsaddr}
 }
 
 func (k *KeeperClient) Connect() error {
 	client, _, err := zk.Connect(ZkAddrs, time.Second)
-        // TODO if cant connect go find another server?
         if err != nil { return err }
 	k.client = client
         return nil
@@ -60,13 +57,14 @@ func (k *KeeperClient) Init() error {
         }
 
 	// attempt to create alive and data dirs, if it fails itll be caught below
-	_, _= k.client.Create("/alive", []byte("alive"), int32(0), zk.WorldACL(zk.PermAll))
 	_, _= k.client.Create("/alivemeta", []byte("alivemeta"), int32(0), zk.WorldACL(zk.PermAll))
+	_, _= k.client.Create("/alivecoord", []byte("alive"), int32(0), zk.WorldACL(zk.PermAll))
+	_, _= k.client.Create("/alivefs", []byte("alive"), int32(0), zk.WorldACL(zk.PermAll))
 	_, _= k.client.Create("/data", []byte("data"), int32(0), zk.WorldACL(zk.PermAll))
 
-        // if a server is joining (addr != "") then create the node in zk 
-        if k.addr != "" {
-            _, err := k.client.Create("/alive/"+k.addr, []byte(k.addr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+        if k.coordaddr != "" && k.fsaddr != "" {
+            _, err := k.client.Create("/alivecoord/"+k.coordaddr, []byte(k.coordaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+            _, err = k.client.Create("/alivefs/"+k.fsaddr, []byte(k.fsaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
             empty := map[string]string{}
             sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
             d, e := json.Marshal(&sm)
@@ -84,75 +82,106 @@ func (k *KeeperClient) Init() error {
                 log.Fatalf("error getting backends", e)
                 return e
         }
-        k.backends = backs
-        go k.Watch(HandleFail)
+        go k.Watch()
 	return nil
 }
 
-type WatchHandler func([]*ClientFs, []*ClientFs) error
-
-func (k *KeeperClient) Watch(fail WatchHandler) {
+func (k *KeeperClient) Watch() {
     for {
-        backs, _, watch, e := k.client.ChildrenW("/alive")
-        if e != nil { panic("some real bad happened") }
+        watch, e := k.AliveWatch()
+        if e != nil { panic(e) }
         if len(backs) < len(k.backends) {
-            old := k.backends
             k.UpdateBackends()
-            e = fail(old, k.backends)
         } else if len(backs) > len(k.backends) {
-            fmt.Println("node join")
-            e = k.UpdateBackends()
-            if e != nil { panic("some real bad happened") }
+            k.UpdateBackends()
         }
         <-watch
     }
 }
 
-func HandleFail(old, curr []*ClientFs) error {
-    fmt.Println("node failure")
-    return nil
+
+func (k *KeeperClient) AliveWatch() (<-chan zk.Event, error) {
+    _, _, watch, e := k.client.ChildrenW("/alivecoord")
+    return watch, e
 }
 
-func (k *KeeperClient) GetBackends() ([]*ClientFs, error) {
+func (k *KeeperClient) GetBackendMaps() (map[string]*ClientFs, map[string]*ClientFs, error) {
     e := k.UpdateBackends()
-    if e != nil { return nil, e }
-    return k.backends, nil
+    if e != nil { return nil, nil, e }
+    coordmap := map[string]*ClientFs{}
+    fsmap := map[string]*ClientFs{}
+    for i, coord := range k.servercoords {
+        coordmap[coord.Addr] = coord
+        fsmap[k.serverfs[i].Addr] = k.serverfs[i]
+    }
+    return coordmap, fsmap, nil
+}
+
+func (k *KeeperClient) GetBackends() ([]*ClientFs, []*ClientFs, error) {
+    fmt.Println("getting backends")
+    e := k.UpdateBackends()
+    if e != nil { return nil, nil, e }
+    return k.servercoords, k.serverfs, nil
 }
 
 func (k *KeeperClient) UpdateBackends() (error) {
-    // this gets /alive and pings them in order, returning a list of addrs
-    // in the order that they respond.
-    backends, _, _, e := k.client.ChildrenW("/alive")
+    coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
     if e != nil {
             log.Fatalf("error getting alive nodes", e)
             return e
     }
-    done := make(chan bool)
-    backs := []*ClientFs{}
+    fsbacks, _, _, e := k.client.ChildrenW("/alivefs")
+    if e != nil {
+            log.Fatalf("error getting alive nodes", e)
+            return e
+    }
+    if len(coordbacks) != len(fsbacks) {
+        return fmt.Errorf("Error with zkget")
+    }
 
-    for _, addr := range backends {
+    done := make(chan bool)
+    servercoords := []*ClientFs{}
+    serverfs:= []*ClientFs{}
+
+    for i, addr := range fsbacks {
         go func(a string) {
             c := NewClientFs(a)
             // if it is not this server then connect
-            if a != k.addr {
+            if a != k.fsaddr {
                 e := c.Connect()
                 if e != nil {
-                        log.Println("keeper couldnt connect to backend", addr)
+                        log.Println("keeper couldnt connect to backend", a)
                 }
             }
-            backs = append(backs, c)
+            serverfs = append(serverfs, c)
             done <- true
         }(addr)
+        go func(a string) {
+            c := NewClientFs(a)
+            // if it is not this server then connect
+            if a != k.fsaddr {
+                e := c.Connect()
+                if e != nil {
+                        log.Println("keeper couldnt connect to backend", a)
+                }
+            }
+            servercoords = append(servercoords, c)
+            done <- true
+        }(coordbacks[i])
     }
 
-    for i := 0; i < len(backends); i++ {
+    for i := 0; i < len(fsbacks) + len(coordbacks); i++ {
         <-done
     }
 
-    if len(backs) == 0 {
-        fmt.Errorf("No backends online yet\n")
+    if len(servercoords) != len(serverfs) {
+        return fmt.Errorf("Coords didnt match ServerFS\n")
     }
-    k.backends = backs
+    if len(servercoords) == 0 {
+        return fmt.Errorf("No backends online yet\n")
+    }
+    k.servercoords = servercoords
+    k.serverfs = serverfs
     return nil
 }
 
@@ -224,15 +253,15 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 
 func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
         // brand new file, initialize new file metadata
-        primary := ServerFileMeta{k.addr, 0, 0}
+        primary := ServerFileMeta{k.coordaddr, 0, 0}
         // pick a replica on the median
-        replica := k.backends[len(k.backends)/2].Addr
+        replica := k.serverfs[len(k.serverfs)/2].Addr
         var kmeta KeeperMeta
-        if replica != k.addr {
+        if replica != k.fsaddr {
             replicas := map[string]ServerFileMeta{replica: ServerFileMeta{replica, 0, 0}}
-            kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
+            kmeta = KeeperMeta{Primary: k.coordaddr, Replicas: replicas, Attr: attr}
         } else {
-            kmeta = KeeperMeta{Primary: primary, Attr: attr}
+            kmeta = KeeperMeta{Primary: k.coordaddr, Attr: attr}
         }
 	d, e := json.Marshal(&kmeta)
 	if e != nil {
@@ -299,8 +328,8 @@ func (k *KeeperClient) Inc(path string, read bool) error {
 }
 
 // add a primary or a replica to a server's metadata
-func (k *KeeperClient) AddServerMeta(path string, replica bool) error {
-    smeta, _, e := k.client.Get("/alivemeta/" + k.addr)
+func (k *KeeperClient) AddServerMeta(path, addr string, replica bool) error {
+    smeta, _, e := k.client.Get("/alivemeta/" + addr)
     if e != nil { return e}
 
     var sm ServerMeta
@@ -321,13 +350,13 @@ func (k *KeeperClient) AddServerMeta(path string, replica bool) error {
     }
     smdata, e := json.Marshal(sm)
     if e != nil { fmt.Println("marshal error", e); return e }
-    _, e = k.client.Set("/alivemeta/"+k.addr, smdata, -1)
+    _, e = k.client.Set("/alivemeta/"+addr, smdata, -1)
     if e != nil { fmt.Println("set error", e) ;return e }
     return nil
 }
 
-func (k *KeeperClient) RemoveServerMeta(path string, replica bool) error {
-    smeta, _, e := k.client.Get("/alivemeta/" + k.addr)
+func (k *KeeperClient) RemoveServerMeta(path, addr string, replica bool) error {
+    smeta, _, e := k.client.Get("/alivemeta/" + addr)
     if e != nil { return e }
 
     var sm ServerMeta
@@ -340,7 +369,7 @@ func (k *KeeperClient) RemoveServerMeta(path string, replica bool) error {
     }
     smdata, e := json.Marshal(&sm)
     if e != nil { return e }
-    _, e = k.client.Set("/alivemeta/"+k.addr, smdata, -1)
+    _, e = k.client.Set("/alivemeta/"+addr, smdata, -1)
     if e != nil { return e }
     return nil
 }
