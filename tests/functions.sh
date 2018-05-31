@@ -147,4 +147,20 @@ assertNotExist() {
 		echo "PASSED assertNotExist. $1"
 	fi
 }
-
+# assert files are identical, 1st arg filename, 2nd arg filename
+assertFilesEqual() {
+	if diff $1 $2 > /dev/null
+	then
+			echo "PASSED assertFilesEqual. $1, $2"
+	else
+			echo "FAILED assertFilesEqual. $1 $2"
+			echo "Exiting."
+			echo
+			stop_jobs
+			tail logs/*.txt
+			echo
+			echo "FAILED $testName"
+			echo
+			exit 1
+	fi
+}

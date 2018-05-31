@@ -5,28 +5,29 @@ import (
 	"fmt"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
+    "strings"
 )
 
 type ServerCoordinator struct {
 	path string
 	Addr string
-	fsaddr string
-	fs *ServerFS
+	sfsaddr string
+	sfs *ServerFS
 	kc *KeeperClient
 	serverfsm map[string]*ClientFs
 	servercoords map[string]*ClientFs
 	primary bool
 }
 
-func NewServerCoordinator(directory, coordaddr, fsaddr string) *ServerCoordinator {
+func NewServerCoordinator(directory, coordaddr, sfsaddr string) *ServerCoordinator {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
 	// serve the rpc client
-	fs := NewServerFS(directory, fsaddr)
-	go Serve(fs)
+	sfs := NewServerFS(directory, sfsaddr)
+	go Serve(sfs)
 	// create a new keeper registering the address of this server
-	kc := NewKeeperClient(coordaddr, fsaddr)
-	return &ServerCoordinator{path: directory, Addr: coordaddr, fsaddr: fsaddr, fs: fs, kc: kc}
+	kc := NewKeeperClient(coordaddr, sfsaddr)
+	return &ServerCoordinator{path: directory, Addr: coordaddr, sfsaddr: sfsaddr, sfs: sfs, kc: kc}
 }
 
 func (self *ServerCoordinator) Init() error {
@@ -57,10 +58,13 @@ func (self *ServerCoordinator) Watch() error {
 
 func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) error {
 	fmt.Println("Open:", input.Name)
-	e := self.fs.Open(input, output)
+	e := self.sfs.Open(input, output)
 	if e != nil {
-			// the file doesn't exist on the server
+		// the file doesn't exist on the server
 		fmt.Println("file "+input.Name+" not currently on server")
+		
+		self.checkAndCreatePath(input.Name)
+
 		kmeta, e := self.kc.Get(input.Name)
 		if e != nil {
 			panic(e)
@@ -72,178 +76,187 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 
 		tmpout := Create_output{}
 		cin := Create_input{input.Name, input.Flags, kmeta.Attr.Mode, input.Context}
-		e = self.fs.Create(&cin, &tmpout)
+		e = self.sfs.Create(&cin, &tmpout)
 		if tmpout.Status != fuse.OK {
 			panic(tmpout.Status)
 		}
 		if readStatus == fuse.OK {
 			fi := FileWrite_input{input.Name, dest, 0, input.Context, input.Flags, kmeta}
 			fo := FileWrite_output{}
-			e = self.fs.FileWrite(&fi, &fo)
+			e = self.sfs.FileWrite(&fi, &fo)
 			} else { panic("could not read primary copy") }
 			fmt.Println("file transferred over")
 			status := tmpout.Status
 
-			kmeta.Replicas = append(kmeta.Replicas, self.fsaddr)
+			kmeta.Replicas = append(kmeta.Replicas, self.sfsaddr)
 			e = self.kc.Set(input.Name, kmeta)
 			if e != nil {
 				panic(e)
 			}
 			output.Status = status
-		}
-		return nil
+	}
+	return nil
+}
+
+func (self *ServerCoordinator) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
+	// use the keeper to list all the files in the directory
+	fmt.Println("opening dir:", input.Name)
+	entries, e := self.kc.GetChildrenAttributes(input.Name)
+	if e != nil {
+		return e
 	}
 
-	func (self *ServerCoordinator) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
-		// use the keeper to list all the files in the directory
-		fmt.Println("opening dir:", input.Name)
-		entries, e := self.kc.GetChildrenAttributes(input.Name)
-		if e != nil {
-			return e
-		}
+	output.Stream = entries
+	return nil
+}
 
-		output.Stream = entries
-		return nil
+func (self *ServerCoordinator) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
+	fmt.Println("get attr:", input.Name)
+	// fetch the attr from zk
+	kmeta, e := self.kc.Get(input.Name)
+	if e != nil {
+	// do nothing
+	}
+	output.Attr = &kmeta.Attr
+	if output.Attr.Ino == 0 {
+		self.sfs.GetAttr(input, output)
+	}
+	return nil
+}
+
+func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output) error {
+	fmt.Println("Rename:",input.Old,"to",input.New)
+	self.sfs.Rename(input, output)
+
+	e := self.kc.Create(input.New, *output.Attr)
+	if e != nil {
+		// do nothing for now
+		fmt.Println("mv error", e)
+		return e
 	}
 
-	func (self *ServerCoordinator) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
-		fmt.Println("get attr:", input.Name)
-		// fetch the attr from zk
-		kmeta, e := self.kc.Get(input.Name)
-		if e != nil {
-		// do nothing
-		}
-		output.Attr = &kmeta.Attr
-		if output.Attr.Ino == 0 {
-			self.fs.GetAttr(input, output)
-		}
-		return nil
+	e = self.kc.Remove(input.Old)
+	if e != nil {
+		// do nothing for now
+		fmt.Println("mv error", e)
+		return e
 	}
+	return nil
+}
 
-	func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output) error {
-		fmt.Println("Rename:",input.Old,"to",input.New)
-		self.fs.Rename(input, output)
+func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
+	fmt.Println("make dir:", input.Name)
 
-		e := self.kc.Create(input.New, *output.Attr)
-		if e != nil {
-			// do nothing for now
-			fmt.Println("mv error", e)
-			return e
-		}
-
-		e = self.kc.Remove(input.Old)
-		if e != nil {
-			// do nothing for now
-			fmt.Println("mv error", e)
-			return e
-		}
-		return nil
+	self.sfs.Mkdir(input, output)
+	e := self.kc.Create(input.Name, *output.Attr)
+	if e != nil {
+		return e
 	}
+	return nil
+}
 
-	func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
-		self.fs.Mkdir(input, output)
-		e := self.kc.Create(input.Name, *output.Attr)
-		if e != nil {
-			return e
-		}
-		return nil
+func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
+	fmt.Println("remove dir:", input.Name)
+
+	self.sfs.Rmdir(input, output)
+	e := self.kc.RemoveDir(input.Name)
+	if e != nil {
+		return e
 	}
+	return nil
+}
 
-	func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
-		self.fs.Rmdir(input, output)
-		e := self.kc.RemoveDir(input.Name)
+func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output) error {
+	fmt.Println("Unlink: "+input.Name)
+	kmeta, e := self.kc.Get(input.Name)
+	if e != nil { return e }
+	if self.Addr == kmeta.Primary {
+		e = self.kc.Remove(input.Name)
 		if e != nil {
-			return e
+			panic(e)
 		}
-		return nil
-	}
-
-	func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output) error {
-		fmt.Println("Unlink: "+input.Name)
-		kmeta, e := self.kc.Get(input.Name)
-		if e != nil { return e }
-		if self.Addr == kmeta.Primary {
-			e = self.kc.Remove(input.Name)
-			if e != nil {
-				panic(e)
-			}
-			self.fs.Unlink(input, output)
-			for _, replicaAddr := range kmeta.Replicas {
-				// get client
-				client := self.serverfsm[replicaAddr]
-				e = client.Unlink(input, output)
-				if e != nil {
-					return e
-				}
-			}
-		} else {
-			client := self.servercoords[kmeta.Primary]
+		self.sfs.Unlink(input, output)
+		for _, replicaAddr := range kmeta.Replicas {
+			// get client
+			client := self.serverfsm[replicaAddr]
 			e = client.Unlink(input, output)
-			if e != nil {
-				panic(e)
-			}
-		}
-
-		return nil
-	}
-
-	func (self *ServerCoordinator) Create(input *Create_input, output *Create_output) error {
-		fmt.Println("Create:", input.Path)
-		self.fs.Create(input, output)
-
-		e := self.kc.Create(input.Path, *output.Attr)
-		if e != nil {
-			return e
-		}
-		return nil
-	}
-
-	func (self *ServerCoordinator) FileRead(input *FileRead_input, output *FileRead_output) error {
-		self.fs.FileRead(input, output)
-		return nil
-	}
-
-	func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
-		fmt.Println("Write -", "Path:", input.Path)
-
-		kmeta, e := self.kc.Get(input.Path)
-		if e != nil {
-			return e
-		}
-		if self.Addr == kmeta.Primary {
-			fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
-			self.fs.FileWrite(input, output)
-
-			for _, replicaAddr := range kmeta.Replicas {
-				fmt.Println("clients", self.serverfsm, replicaAddr)
-				client := self.serverfsm[replicaAddr]
-				e = client.FileWrite(input, output)
-				if e != nil {
-					return e
-				}
-			}
-
-			kmeta.Attr = *output.Attr
-			e = self.kc.Set(input.Path, kmeta)
 			if e != nil {
 				return e
 			}
+		}
+	} else {
+		client := self.servercoords[kmeta.Primary]
+		e = client.Unlink(input, output)
+		if e != nil {
+			panic(e)
+		}
+	}
 
-		} else {
-			fmt.Println("Not primary, forwarding request to primary coordinator")
-			client := self.servercoords[kmeta.Primary]
-			input.Kmeta = kmeta
+	return nil
+}
+
+func (self *ServerCoordinator) Create(input *Create_input, output *Create_output) error {
+	fmt.Println("Create:", input.Path)
+		
+	// self.checkAndCreatePath(input.Path)
+	
+	self.sfs.Create(input, output)
+
+	e := self.kc.Create(input.Path, *output.Attr)
+	if e != nil {
+		return e
+	}
+	return nil
+}
+
+func (self *ServerCoordinator) FileRead(input *FileRead_input, output *FileRead_output) error {
+	fmt.Println("Read -", "Path:", input.Path)
+	self.sfs.FileRead(input, output)
+	return nil
+}
+
+func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
+	fmt.Println("Write -", "Path:", input.Path)
+
+	kmeta, e := self.kc.Get(input.Path)
+	if e != nil {
+		return e
+	}
+	if self.Addr == kmeta.Primary {
+		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
+		self.sfs.FileWrite(input, output)
+
+		for _, replicaAddr := range kmeta.Replicas {
+			fmt.Println("clients", self.serverfsm, replicaAddr)
+			client := self.serverfsm[replicaAddr]
 			e = client.FileWrite(input, output)
 			if e != nil {
 				return e
 			}
 		}
 
-		return nil
+		kmeta.Attr = *output.Attr
+		e = self.kc.Set(input.Path, kmeta)
+		if e != nil {
+			return e
+		}
 
+	} else {
+		fmt.Println("Not primary, forwarding request to primary coordinator")
+		client := self.servercoords[kmeta.Primary]
+		input.Kmeta = kmeta
+		e = client.FileWrite(input, output)
+		if e != nil {
+			return e
+		}
 	}
 
-	func (self *ServerCoordinator) FileRelease(input *FileRelease_input, output *FileRelease_output) error {
+	return nil
+
+}
+
+func (self *ServerCoordinator) FileRelease(input *FileRelease_input, output *FileRelease_output) error {
+	fmt.Println("Release -", "Path:", input.Path)
 	/*
 	fmt.Println("Releasing file", input.Path)
 	
@@ -252,6 +265,66 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 	self.openFiles = append(self.openFiles[:input.FileId], self.openFiles[input.FileId+1:])
 	*/
 	return nil
+}
+
+/*
+this function will split the path and check that all directories exits
+if a directory does not exist it will create it on this coordinators ServerFs
+
+it does not do the last element of the split because it is the thing the calling 
+op is woking on
+*/
+func (self *ServerCoordinator) checkAndCreatePath(path string) {
+	dirs := strings.Split(path, "/")
+	// remove all but last filename or dir
+	if len(dirs[len(dirs)-1]) == 0 {
+		dirs = dirs[:len(dirs)-2]
+	} else {
+		dirs = dirs[:len(dirs)-1]
+	}
+
+	// for each directory in the path
+	for index, _ := range dirs {
+		curPath := strings.Join(dirs[:index+1], "/")
+		kmeta, e := self.kc.Get(curPath)
+		if e != nil {
+			panic(e)
+		}
+
+		// check if it alread has it
+		if self.sfsaddr == kmeta.Primary {
+			continue
+		}
+		for _, addr := range kmeta.Replicas {
+        	if self.sfsaddr == addr {
+            	continue
+        	}
+        }
+		
+		fmt.Println("directory "+curPath+" not currently on server")
+
+        // create the dir lovally
+        /* 
+        TODO: HOW ARE WE HANDLING LOCAL CHANGES? 
+        GOING THROUGH the ServerFS will cause loopback rpc
+        */
+        input := &Mkdir_input{Name: curPath, Mode: kmeta.Attr.Mode}
+        output := &Mkdir_output{}
+
+		err := self.sfs.Mkdir(input, output)
+		if err != nil || output.Status != fuse.OK {
+			fmt.Println(curPath, ": ", err, output.Status)
+			panic(err)
+		}
+
+        // update keeper
+		kmeta.Replicas = append(kmeta.Replicas, self.sfsaddr)
+		e = self.kc.Set(curPath, kmeta)
+		if e != nil {
+			panic(e)
+		}
+
+	}
 }
 
 // assert that ServerCoordinator implements BackendFs
