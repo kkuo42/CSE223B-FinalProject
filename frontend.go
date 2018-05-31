@@ -74,6 +74,7 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
 	return fuseFile, output.Status
 }
 func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
+	fmt.Println("opening dir:", name)
 	input := &OpenDir_input{Name: name, Context: context}
 	output := &OpenDir_output{}
 
@@ -87,6 +88,8 @@ func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse
 	return output.Stream, output.Status
 }
 func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.Attr, status fuse.Status) {
+	fmt.Println("get attr:", name)
+
 	input := &GetAttr_input{Name: name, Context: context}
 	output := &GetAttr_output{}
 

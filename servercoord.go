@@ -97,7 +97,6 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 	func (self *ServerCoordinator) OpenDir(input *OpenDir_input, output *OpenDir_output) error {
 		// use the keeper to list all the files in the directory
 		fmt.Println("opening dir:", input.Name)
-		self.fs.OpenDir(input, output)
 		entries, e := self.kc.GetChildrenAttributes(input.Name)
 		if e != nil {
 			return e

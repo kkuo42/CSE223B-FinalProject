@@ -60,7 +60,7 @@ func main() {
     }
 
     // serve
-    log.Printf("key-value store serving directory \"%s\" on %s", sharepoint, coordaddr)
+    log.Printf("key-value coordinator on %s", coordaddr)
     e = http.Serve(l, server)
     if e != nil {
         log.Fatal(e)
