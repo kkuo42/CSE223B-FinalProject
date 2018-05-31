@@ -1,7 +1,7 @@
 package proj
 
 import (
-    "log"
+	"log"
 	"time"
 	"fmt"
 	"github.com/hanwen/go-fuse/fuse"
@@ -22,38 +22,38 @@ interface to implement
 type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs
-        kc *KeeperClient
+	kc *KeeperClient
 }
 
 func NewFrontendRemotelyBacked(backaddr string) Frontend {
-    fs := pathfs.NewDefaultFileSystem()
+	fs := pathfs.NewDefaultFileSystem()
 
-    // "" indicates this is a frontend and to not add to /alive
-    kc := NewKeeperClient("", "")
-    e := kc.Init()
-    if e != nil { panic(e) }
+	// "" indicates this is a frontend and to not add to /alive
+	kc := NewKeeperClient("", "")
+	e := kc.Init()
+	if e != nil { panic(e) }
 
-    backends, _, e := kc.GetBackends()
-    // TODO watch alive for changes in state and update list of clients
-    if e != nil {
-	    log.Fatalf("error getting alive nodes: %v\n", e)
-    }
-    if len(backends) == 0 {
-	    log.Fatalf("ERROR: no backends")
-    }
+	backends, _, e := kc.GetBackends()
+	// TODO watch alive for changes in state and update list of clients
+	if e != nil {
+		log.Fatalf("error getting alive nodes: %v\n", e)
+	}
+	if len(backends) == 0 {
+		log.Fatalf("ERROR: no backends")
+	}
 
-    // get the closest backend
-    clientFs := backends[0]
-    if backaddr != "" {
-	    clientFs = NewClientFs(backaddr)
-    }
+	// get the closest backend
+	clientFs := backends[0]
+	if backaddr != "" {
+		clientFs = NewClientFs(backaddr)
+	}
 
-    e = clientFs.Connect()
-    if e != nil {
+	e = clientFs.Connect()
+	if e != nil {
 		log.Fatalf("error connecting to backend. try another one?, error: %v",e)
-    }
-    log.Println("Connected to backend:", clientFs.Addr)
-    return Frontend{FileSystem: fs, backendFs: clientFs}
+	}
+	log.Println("Connected to backend:", clientFs.Addr)
+	return Frontend{FileSystem: fs, backendFs: clientFs}
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
@@ -80,7 +80,7 @@ func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse
 	e := self.backendFs.OpenDir(input, output)
 
 	if e != nil {
-	    log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n", e)
+		log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n", e)
 		// return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
 	}
 
@@ -93,7 +93,7 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 	e := self.backendFs.GetAttr(input, output)
 
 	if e != nil {
-	    log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
+		log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
 		// return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
 	}
 
@@ -182,7 +182,7 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
 	e := self.Backend.FileRead(input, output)
 	if e != nil {
-	    // log.Fatalf("backend faild to read file: %v\n", e)
+		// log.Fatalf("backend faild to read file: %v\n", e)
 		return nil, fuse.EIO
 	}
 	return output.ReadResult, output.Status
