@@ -126,27 +126,69 @@ func (self *ServerCoordinator) GetAttr(input *GetAttr_input, output *GetAttr_out
 
 func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output) error {
 	fmt.Println("Rename:",input.Old,"to",input.New)
-	self.sfs.Rename(input, output)
-
-	e := self.kc.Create(input.New, *output.Attr)
+	
+	// get attributes of dir
+	kmeta, e := self.kc.Get(input.Old)
 	if e != nil {
-		// do nothing for now
-		fmt.Println("mv error", e)
-		return e
+		panic(e)
 	}
 
-	e = self.kc.Remove(input.Old)
-	if e != nil {
-		// do nothing for now
-		fmt.Println("mv error", e)
-		return e
+	// if this is the primary do renaming
+	// else forward task
+	if self.Addr == kmeta.Primary {
+		// rename in backups
+		for _, addr := range kmeta.Replicas {
+			fmt.Printf("asking %v to rename file: %v to %v\n", addr, input.Old, input.New)		
+			err := self.serverfsm[addr].Rename(input, output)
+			if err != nil || output.Status != fuse.OK {
+				fmt.Println(input.Old, input.New, ": ", err, output.Status)
+				panic(err)
+			}
+	    }
+	    // rename in primary
+		err := self.sfs.Rename(input, output)
+		if err != nil || output.Status != fuse.OK {
+			fmt.Println(input.Old, input.New, ": ", err, output.Status)
+			panic(err)
+		}
+		// rename in keeper
+		// create the file
+		e := self.kc.Create(input.New, kmeta.Attr)
+		if e != nil {
+			// do nothing for now
+			fmt.Println("mv error", e)
+			panic(e)
+		}
+		// Set its metadata
+		e = self.kc.Set(input.New, kmeta)
+		if e != nil {
+			// do nothing for now
+			fmt.Println("mv error", e)
+			panic(e)
+		}
+		// remove the old file
+		e = self.kc.Remove(input.Old)
+		if e != nil {
+			// do nothing for now
+			fmt.Println("mv error", e)
+			panic(e)
+		}
+	} else {
+		err := self.servercoords[kmeta.Primary].Rename(input, output)
+		if err != nil || output.Status != fuse.OK {
+			fmt.Println(input.Old, input.New, ": ", err, output.Status)
+			panic(err)
+		}		
 	}
+
 	return nil
 }
 
 func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	fmt.Println("make dir:", input.Name)
-
+		
+	self.checkAndCreatePath(input.Name)
+	
 	self.sfs.Mkdir(input, output)
 	e := self.kc.Create(input.Name, *output.Attr)
 	if e != nil {
@@ -158,11 +200,44 @@ func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) e
 func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 	fmt.Println("remove dir:", input.Name)
 
-	self.sfs.Rmdir(input, output)
-	e := self.kc.RemoveDir(input.Name)
+	// get attributes of dir
+	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
-		return e
+		panic(e)
 	}
+
+	// if this is the primary do removing
+	// else forward task
+	if self.Addr == kmeta.Primary {
+		// removing from backups
+		for _, addr := range kmeta.Replicas {
+			fmt.Printf("asking %v to remove dir: %v\n", addr, input.Name)		
+			err := self.serverfsm[addr].Rmdir(input, output)
+			if err != nil || output.Status != fuse.OK {
+				fmt.Println(input.Name, ": ", err, output.Status)
+				panic(err)
+			}
+	    }
+	    // remove from primary
+		err := self.sfs.Rmdir(input, output)
+		if err != nil || output.Status != fuse.OK {
+			fmt.Println(input.Name, ": ", err, output.Status)
+			panic(err)
+		}
+		// remove from keeper
+		e = self.kc.RemoveDir(input.Name)
+		if e != nil {
+			return e
+		}
+	} else {
+		err := self.servercoords[kmeta.Primary].Rmdir(input, output)
+		if err != nil || output.Status != fuse.OK {
+			fmt.Println(input.Name, ": ", err, output.Status)
+			panic(err)
+		}		
+	}
+
+
 	return nil
 }
 
@@ -198,7 +273,7 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 func (self *ServerCoordinator) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create:", input.Path)
 		
-	// self.checkAndCreatePath(input.Path)
+	self.checkAndCreatePath(input.Path)
 	
 	self.sfs.Create(input, output)
 
@@ -292,7 +367,7 @@ func (self *ServerCoordinator) checkAndCreatePath(path string) {
 		}
 
 		// check if it alread has it
-		if self.sfsaddr == kmeta.Primary {
+		if self.Addr == kmeta.Primary {
 			continue
 		}
 		for _, addr := range kmeta.Replicas {
