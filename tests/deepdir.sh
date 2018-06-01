@@ -8,7 +8,6 @@ testName=$(basename $BASH_SOURCE)
 
 setup_servers
 
-
 # read a file in the deep dir of another server
 echo
 echo "read a file in the deep dir of another server"

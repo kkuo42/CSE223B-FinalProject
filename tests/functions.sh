@@ -3,9 +3,11 @@
 # This script is used to define all of the functions that will be used in other tests
 
 setup_servers() {
-	# build source
-	make || exit 1
-	echo
+	if [ -z $suite ]; then
+		# build source
+		make || exit 1
+		echo
+	fi
 
 	# zk reset
 	rm -rf zkdata zookeeper.out
