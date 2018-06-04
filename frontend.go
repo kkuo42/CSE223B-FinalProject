@@ -37,6 +37,7 @@ func (self *Frontend) Init() {
     e := self.kc.Init()
     if e != nil { panic(e) }
 
+	// force initial refresh of server connections
 	self.RefreshClient()
     go self.WatchBacks()
 }
