@@ -44,7 +44,7 @@ func (self *ServerCoordinator) Init() error {
 
 func (self *ServerCoordinator) Watch() error {
 	for {
-		watch, e := self.kc.AliveWatch()
+		_, watch, e := self.kc.AliveWatch()
 		if e != nil { return e }
 		// something changed so go update backend maps
 		servercoords, serverfsm, e := self.kc.GetBackendMaps()
@@ -62,7 +62,6 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 	if e != nil {
 		// the file doesn't exist on the server
 		fmt.Println("file "+input.Name+" not currently on server")
-		
 		self.checkAndCreatePath(input.Name)
 
 		kmeta, e := self.kc.Get(input.Name)
@@ -88,12 +87,12 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			fmt.Println("file transferred over")
 			status := tmpout.Status
 
-      kmeta.Replicas[self.fsaddr] = ServerFileMeta{self.fsaddr, 0, 0}
+			kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.sfsaddr, 0, 0}
 			e = self.kc.Set(input.Name, kmeta)
 			if e != nil {
 				panic(e)
 			}
-      e = self.kc.AddServerMeta(input.Name, self.fsaddr, true)
+		        e = self.kc.AddServerMeta(input.Name, self.sfsaddr, true)
 			output.Status = status
 	}
 	return nil
@@ -136,11 +135,11 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 
 	// if this is the primary do renaming
 	// else forward task
-	if self.Addr == kmeta.Primary {
+	if self.Addr == kmeta.Primary.Addr {
 		// rename in backups
-		for _, addr := range kmeta.Replicas {
-			fmt.Printf("asking %v to rename file: %v to %v\n", addr, input.Old, input.New)		
-			err := self.serverfsm[addr].Rename(input, output)
+		for _, replica:= range kmeta.Replicas {
+			fmt.Printf("asking %v to rename file: %v to %v\n", replica.Addr, input.Old, input.New)
+			err := self.serverfsm[replica.Addr].Rename(input, output)
 			if err != nil || output.Status != fuse.OK {
 				fmt.Println(input.Old, input.New, ": ", err, output.Status)
 				panic(err)
@@ -175,21 +174,19 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 			panic(e)
 		}
 	} else {
-		err := self.servercoords[kmeta.Primary].Rename(input, output)
+		err := self.servercoords[kmeta.Primary.Addr].Rename(input, output)
 		if err != nil || output.Status != fuse.OK {
 			fmt.Println(input.Old, input.New, ": ", err, output.Status)
 			panic(err)
-		}		
+		}
 	}
-  self.kc.RemoveServerMeta(input.Old, self.Addr, false)
+	self.kc.RemoveServerMeta(input.Old, self.Addr, false)
 	return nil
 }
 
 func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	fmt.Println("make dir:", input.Name)
-		
 	self.checkAndCreatePath(input.Name)
-	
 	self.sfs.Mkdir(input, output)
 	e := self.kc.Create(input.Name, *output.Attr)
 	if e != nil {
@@ -209,11 +206,11 @@ func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) e
 
 	// if this is the primary do removing
 	// else forward task
-	if self.Addr == kmeta.Primary {
+	if self.Addr == kmeta.Primary.Addr {
 		// removing from backups
-		for _, addr := range kmeta.Replicas {
-			fmt.Printf("asking %v to remove dir: %v\n", addr, input.Name)		
-			err := self.serverfsm[addr].Rmdir(input, output)
+		for _, replica := range kmeta.Replicas {
+			fmt.Printf("asking %v to remove dir: %v\n", replica.Addr, input.Name)
+			err := self.serverfsm[replica.Addr].Rmdir(input, output)
 			if err != nil || output.Status != fuse.OK {
 				fmt.Println(input.Name, ": ", err, output.Status)
 				panic(err)
@@ -231,11 +228,11 @@ func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) e
 			return e
 		}
 	} else {
-		err := self.servercoords[kmeta.Primary].Rmdir(input, output)
+		err := self.servercoords[kmeta.Primary.Addr].Rmdir(input, output)
 		if err != nil || output.Status != fuse.OK {
 			fmt.Println(input.Name, ": ", err, output.Status)
 			panic(err)
-		}		
+		}
 	}
 
 
@@ -252,7 +249,7 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 			panic(e)
 		}
 		self.sfs.Unlink(input, output)
-    self.kc.RemoveServerMeta(input.Name, self.Addr, false)
+		self.kc.RemoveServerMeta(input.Name, self.Addr, false)
 		for _, replica := range kmeta.Replicas {
 			// get client
 			client := self.serverfsm[replica.Addr]
@@ -260,7 +257,7 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 			if e != nil {
 				return e
 			}
-      self.kc.RemoveServerMeta(input.Name, replica.Addr, true)
+			self.kc.RemoveServerMeta(input.Name, replica.Addr, true)
 		}
 	} else {
 		client := self.servercoords[kmeta.Primary.Addr]
@@ -305,7 +302,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		self.sfs.FileWrite(input, output)
 
 		for _, replica := range kmeta.Replicas {
-			fmt.Println("clients", self.serverfsm, replicaAddr)
+			fmt.Println("clients", self.serverfsm, replica.Addr)
 			client := self.serverfsm[replica.Addr]
 			e = client.FileWrite(input, output)
 			if e != nil {
@@ -370,16 +367,15 @@ func (self *ServerCoordinator) checkAndCreatePath(path string) {
 		}
 
 		// check if it alread has it
-		if self.Addr == kmeta.Primary {
+		if self.Addr == kmeta.Primary.Addr {
 			continue
 		}
-		for _, addr := range kmeta.Replicas {
-        	if self.sfsaddr == addr {
-            	continue
-        	}
+		for _, replica := range kmeta.Replicas {
+			if self.sfsaddr == replica.Addr {
+		continue
+		}
         }
-		
-		fmt.Println("directory "+curPath+" not currently on server")
+	fmt.Println("directory "+curPath+" not currently on server")
 
         // create the dir lovally
         /* 
@@ -389,18 +385,18 @@ func (self *ServerCoordinator) checkAndCreatePath(path string) {
         input := &Mkdir_input{Name: curPath, Mode: kmeta.Attr.Mode}
         output := &Mkdir_output{}
 
-		err := self.sfs.Mkdir(input, output)
-		if err != nil || output.Status != fuse.OK {
-			fmt.Println(curPath, ": ", err, output.Status)
-			panic(err)
-		}
+	err := self.sfs.Mkdir(input, output)
+	if err != nil || output.Status != fuse.OK {
+		fmt.Println(curPath, ": ", err, output.Status)
+		panic(err)
+	}
 
-        // update keeper
-		kmeta.Replicas = append(kmeta.Replicas, self.sfsaddr)
-		e = self.kc.Set(curPath, kmeta)
-		if e != nil {
-			panic(e)
-		}
+	// update keeper
+	kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.sfsaddr, 0, 0}
+	e = self.kc.Set(curPath, kmeta)
+	if e != nil {
+		panic(e)
+	}
 
 	}
 }

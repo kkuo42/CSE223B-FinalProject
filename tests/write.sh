@@ -16,7 +16,7 @@ echo "writing a to data/to0/a"
 echo -n "a" > data/to0/a
 sleep 1
 assertExist data/from0/a
-assertExist data/from1/a
+assertNotExist data/from1/a
 assertNotExist data/from2/a
 
 echo "cat data/to1/a"
