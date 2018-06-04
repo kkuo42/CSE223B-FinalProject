@@ -37,6 +37,7 @@ func (self *Frontend) Init() {
     e := self.kc.Init()
     if e != nil { panic(e) }
 
+	self.RefreshClient()
     go self.WatchBacks()
 }
 
@@ -72,6 +73,7 @@ func (self *Frontend) RefreshClient() error {
             return nil
         }
     }
+	fmt.Println("Didn't connect to any backend")
     return e
 }
 
@@ -118,6 +120,9 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 	input := &GetAttr_input{Name: name, Context: context}
 	output := &GetAttr_output{}
 
+	if self.backendFs == nil {
+		fmt.Println("backendFs is nil")
+	}
 	e := self.backendFs.GetAttr(input, output)
 
 	if e != nil {
