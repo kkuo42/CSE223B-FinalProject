@@ -251,14 +251,15 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
         // brand new file, initialize new file metadata
         primary := ServerFileMeta{k.coordaddr, 0, 0}
         // pick a replica on the median
-        replica := k.serverfs[len(k.serverfs)/2].Addr
+        //replica := k.serverfs[len(k.serverfs)/2].Addr
+        replicas := map[string]ServerFileMeta{}
         var kmeta KeeperMeta
+	/*
         if replica != k.fsaddr {
-            replicas := map[string]ServerFileMeta{replica: ServerFileMeta{replica, 0, 0}}
-            kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
-        } else {
-            kmeta = KeeperMeta{Primary: primary, Attr: attr}
-        }
+            replicas[replica] = ServerFileMeta{replica, 0, 0}
+	}
+	*/
+        kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
 	d, e := json.Marshal(&kmeta)
 	if e != nil {
 		return e
@@ -268,8 +269,12 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
 	if e != nil {
 		return e
 	}
+	/*
         k.AddServerMeta(path, k.coordaddr, false)
-        k.AddServerMeta(path, replica, true)
+	if replica != k.fsaddr {
+		k.AddServerMeta(path, replica, true)
+	}
+	*/
 	return nil
 }
 
