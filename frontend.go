@@ -1,7 +1,7 @@
 package proj
 
 import (
-    "log"
+	"log"
 	"time"
 	"fmt"
 	"github.com/hanwen/go-fuse/fuse"
@@ -22,8 +22,8 @@ interface to implement
 type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs
-        kc *KeeperClient
-        backpref string
+	kc *KeeperClient
+  backpref string
 }
 
 func NewFrontendRemotelyBacked(backaddr string) Frontend {
@@ -94,32 +94,37 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
 
 	return fuseFile, output.Status
 }
+
 func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
+	fmt.Println("opening dir:", name)
 	input := &OpenDir_input{Name: name, Context: context}
 	output := &OpenDir_output{}
 
 	e := self.backendFs.OpenDir(input, output)
 
 	if e != nil {
-                log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n, find new server", e)
-                e = self.RefreshClient()
-                if e != nil { panic(e) }
-                return self.OpenDir(name, context)
+    log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n, find new server", e)
+    e = self.RefreshClient()
+    if e != nil { panic(e) }
+    return self.OpenDir(name, context)
 	}
 
 	return output.Stream, output.Status
 }
+
 func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.Attr, status fuse.Status) {
+	fmt.Println("get attr:", name)
+
 	input := &GetAttr_input{Name: name, Context: context}
 	output := &GetAttr_output{}
 
 	e := self.backendFs.GetAttr(input, output)
 
 	if e != nil {
-                log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
-                e = self.RefreshClient()
-                if e != nil { panic(e) }
-                return self.GetAttr(name, context)
+    log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
+    e = self.RefreshClient()
+    if e != nil { panic(e) }
+    return self.GetAttr(name, context)
 	}
 
 	return output.Attr, output.Status
@@ -222,12 +227,8 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
 	e := self.Backend.FileRead(input, output)
 	if e != nil {
-                log.Fatalf("backend faild to read file: %v\n", e)
-                return nil, fuse.ENOSYS
-                // TODO
-                /*e = self.RefreshClient()
-                if e != nil { panic(e) }
-                return self.Read(dest, off)*/
+		// log.Fatalf("backend faild to read file: %v\n", e)
+		return nil, fuse.EIO
 	}
 	return output.ReadResult, output.Status
 }

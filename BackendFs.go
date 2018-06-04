@@ -33,7 +33,7 @@ type GetAttr_output struct {
 	Status fuse.Status
 }
 
-type Unlink_input struct  {
+type Unlink_input struct {
 	Name string
 	Context *fuse.Context
 }
@@ -52,7 +52,7 @@ type Create_input struct {
 type Create_output struct {
 	FileId int
 	Status fuse.Status
-        Attr *fuse.Attr
+	Attr *fuse.Attr
 }
 
 type Rename_input struct {
@@ -63,7 +63,7 @@ type Rename_input struct {
 
 type Rename_output struct {
 	Status fuse.Status
-        Attr *fuse.Attr
+	Attr *fuse.Attr
 }
 
 type Mkdir_input struct {
@@ -74,7 +74,7 @@ type Mkdir_input struct {
 
 type Mkdir_output struct {
 	Status fuse.Status
-        Attr *fuse.Attr
+	Attr *fuse.Attr
 }
 
 type Rmdir_input struct {
@@ -110,7 +110,7 @@ type FileWrite_input struct {
 type FileWrite_output struct {
 	Written uint32
 	Status fuse.Status
-        Attr *fuse.Attr
+	Attr *fuse.Attr
 }
 
 type FileRelease_input struct {

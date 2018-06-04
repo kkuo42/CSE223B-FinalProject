@@ -3,9 +3,11 @@
 # This script is used to define all of the functions that will be used in other tests
 
 setup_servers() {
-	# build source
-	make || exit 1
-	echo
+	if [ -z $suite ]; then
+		# build source
+		make || exit 1
+		echo
+	fi
 
 	# zk reset
 	rm -rf zkdata zookeeper.out
@@ -128,7 +130,7 @@ assertFile() {
 		echo "PASSED assertFile. $1 contents: $2"
 	else
 		rm data/temp
-		echo "FAILED assertFile. $1 contents: $2"
+		echo "FAILED assertFile. $1 contents: `cat $1 | sed 's/;$//'`. expected: $2"
 		echo "Exiting."
 		echo
 		stop_jobs
@@ -174,4 +176,20 @@ assertNotExist() {
 		echo "PASSED assertNotExist. $1"
 	fi
 }
-
+# assert files are identical, 1st arg filename, 2nd arg filename
+assertFilesEqual() {
+	if diff $1 $2 > /dev/null
+	then
+			echo "PASSED assertFilesEqual. $1, $2"
+	else
+			echo "FAILED assertFilesEqual. $1 $2"
+			echo "Exiting."
+			echo
+			stop_jobs
+			tail logs/*.txt
+			echo
+			echo "FAILED $testName"
+			echo
+			exit 1
+	fi
+}
