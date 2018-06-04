@@ -208,6 +208,22 @@ func (self *ClientFs) Rename(input *Rename_input, output *Rename_output) error {
 	return e
 }
 
+func (self *ClientFs) ReplicaRename(input *Rename_input, output *Rename_output) error {
+	e := self.Connect()
+	if e != nil { return e }
+
+	e = self.conn.Call("BackendFs.ReplicaRename", input, output)
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.ReplicaRename", input, output)
+		}
+	}
+
+	return e
+}
+
 func (self *ClientFs) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	e := self.Connect()
 	if e != nil { return e }

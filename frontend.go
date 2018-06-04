@@ -23,37 +23,56 @@ type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs
 	kc *KeeperClient
+  backpref string
 }
 
 func NewFrontendRemotelyBacked(backaddr string) Frontend {
-	fs := pathfs.NewDefaultFileSystem()
+    fs := pathfs.NewDefaultFileSystem()
+    return Frontend{FileSystem: fs, backpref: backaddr}
+}
 
-	// "" indicates this is a frontend and to not add to /alive
-	kc := NewKeeperClient("", "")
-	e := kc.Init()
-	if e != nil { panic(e) }
+func (self *Frontend) Init() {
+    // "" indicates this is a frontend and to not add to /alive
+    self.kc = NewKeeperClient("", "")
+    e := self.kc.Init()
+    if e != nil { panic(e) }
 
-	backends, _, e := kc.GetBackends()
-	// TODO watch alive for changes in state and update list of clients
-	if e != nil {
-		log.Fatalf("error getting alive nodes: %v\n", e)
-	}
-	if len(backends) == 0 {
-		log.Fatalf("ERROR: no backends")
-	}
+    go self.WatchBacks()
+}
 
-	// get the closest backend
-	clientFs := backends[0]
-	if backaddr != "" {
-		clientFs = NewClientFs(backaddr)
-	}
+func (self *Frontend) WatchBacks() {
+    for {
+        watch, e := self.kc.GetWatch("/alivecoord")
+        fmt.Println("change in servers happened... picking a new one")
+        if e != nil { panic(e) }
+        self.RefreshClient()
+        <-watch
+    }
+}
 
-	e = clientFs.Connect()
-	if e != nil {
-		log.Fatalf("error connecting to backend. try another one?, error: %v",e)
-	}
-	log.Println("Connected to backend:", clientFs.Addr)
-	return Frontend{FileSystem: fs, backendFs: clientFs}
+func (self *Frontend) RefreshClient() error {
+    backends, _, e := self.kc.GetBackends()
+    if e != nil { return e }
+    if self.backpref != "" {
+        // attempt to connect to preferred back
+        back := NewClientFs(self.backpref)
+        e = back.Connect()
+        if e == nil {
+            self.backendFs = back
+            fmt.Println("pref connected to", back.Addr)
+            return nil
+        }
+        fmt.Println("couldnt connect to prefered back")
+    }
+    for _, back := range backends {
+        e = back.Connect()
+        if e == nil {
+            self.backendFs = back
+            fmt.Println("connected to", back.Addr)
+            return nil
+        }
+    }
+    return e
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
@@ -64,8 +83,10 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
 	e := self.backendFs.Open(input, output)
 
 	if e != nil {
-		log.Fatalf("Fuse call to backendFs.Open failed: %v\n, %v\n", e, output.Status)
-		return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
+		log.Fatalf("Fuse call to backendFs.Open failed: %v\n, %v\n, we will find a new server", e, output.Status)
+                e = self.RefreshClient()
+                if e != nil { panic(e) }
+                return self.Open(name, flags, context)
 	}
 	if output.Status == fuse.OK {
 		fuseFile = &FrontendFile{Name: name, Backend: self.backendFs, Context: context}
@@ -73,6 +94,7 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
 
 	return fuseFile, output.Status
 }
+
 func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse.DirEntry, status fuse.Status) {
 	fmt.Println("opening dir:", name)
 	input := &OpenDir_input{Name: name, Context: context}
@@ -81,12 +103,15 @@ func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse
 	e := self.backendFs.OpenDir(input, output)
 
 	if e != nil {
-		log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n", e)
-		// return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
+    log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n, find new server", e)
+    e = self.RefreshClient()
+    if e != nil { panic(e) }
+    return self.OpenDir(name, context)
 	}
 
 	return output.Stream, output.Status
 }
+
 func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.Attr, status fuse.Status) {
 	fmt.Println("get attr:", name)
 
@@ -96,8 +121,10 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 	e := self.backendFs.GetAttr(input, output)
 
 	if e != nil {
-		log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
-		// return nil, fuse.ENOSYS // probably shoud have different error handling for rpc fail
+    log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
+    e = self.RefreshClient()
+    if e != nil { panic(e) }
+    return self.GetAttr(name, context)
 	}
 
 	return output.Attr, output.Status
@@ -111,7 +138,10 @@ func (self *Frontend) Unlink(name string, context *fuse.Context) (code fuse.Stat
 	e := self.backendFs.Unlink(input, output)
 
 	if e != nil {
-		return fuse.ENOSYS
+                log.Fatalf("Fuse call to backendFs.Unlink failed: %v\n", e)
+                e = self.RefreshClient()
+                if e != nil { panic(e) }
+                return self.Unlink(name, context)
 	}
 
 	return output.Status
@@ -124,7 +154,10 @@ func (self *Frontend) Rename(oldName string, newName string, context *fuse.Conte
 	e := self.backendFs.Rename(input, output)
 
 	if e != nil {
-		return fuse.ENOSYS
+                log.Fatalf("Fuse call to backendFs.Rename failed: %v\n", e)
+                e = self.RefreshClient()
+                if e != nil { panic(e) }
+                return self.Rename(oldName, newName, context)
 	}
 	return output.Status
 }
@@ -136,7 +169,10 @@ func (self *Frontend) Mkdir(name string, mode uint32, context *fuse.Context) fus
 	e := self.backendFs.Mkdir(input, output)
 
 	if e != nil {
-		return fuse.ENOSYS
+                log.Fatalf("Fuse call to backendFs.Mkdir failed: %v\n", e)
+                e = self.RefreshClient()
+                if e != nil { panic(e) }
+                return self.Mkdir(name, mode, context)
 	}
 	return output.Status
 }
@@ -148,7 +184,10 @@ func (self *Frontend) Rmdir(name string, context *fuse.Context) (code fuse.Statu
 	e := self.backendFs.Rmdir(input, output)
 
 	if e != nil {
-		return fuse.ENOSYS
+                log.Fatalf("Fuse call to backendFs.Rmdir failed: %v\n", e)
+                e = self.RefreshClient()
+                if e != nil { panic(e) }
+                return self.Rmdir(name, context)
 	}
 	return output.Status
 }
@@ -160,7 +199,10 @@ func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fu
 	e := self.backendFs.Create(input, output)
 
 	if e != nil {
-		return nil, fuse.ENOSYS
+                log.Fatalf("Fuse call to backendFs.Create failed: %v\n", e)
+                e = self.RefreshClient()
+                if e != nil { panic(e) }
+                return self.Create(path, flags, mode, context)
 	}
 	fuseFile = &FrontendFile{Backend: self.backendFs, Name: path, Context: context}
 
@@ -197,7 +239,13 @@ func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fu
 	e := self.Backend.FileWrite(input, output)
 
 	if e != nil {
-		return 0, fuse.ENOSYS
+            log.Fatalf("backend faild to write file: %v\n", e)
+            return 0, fuse.ENOSYS
+            /*
+            e = self.RefreshClient()
+            if e != nil { panic(e) }
+            return self.Write(data, off)
+            */
 	}
 
 	return output.Written, output.Status

@@ -16,7 +16,8 @@ echo "writing a to data/to0/a"
 echo -n "a" > data/to0/a
 sleep 1
 assertExist data/from0/a
-assertNotExist data/from1/a
+assertExist data/from1/a
+assertNotExist data/from2/a
 
 echo "cat data/to1/a"
 cat data/to1/a > /dev/null
@@ -28,7 +29,7 @@ assertFile data/to1/a "a"
 
 echo "appending b to data/to1/a"
 echo -n "b" >> data/to1/a
-sleep 1
+sleep 2
 assertFile data/from0/a "ab"
 assertFile data/from1/a "ab"
 assertFile data/to0/a "ab"

@@ -69,7 +69,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 		if e != nil {
 			panic(e)
 		}
-		client := self.servercoords[kmeta.Primary]
+		client := self.servercoords[kmeta.Primary.Addr]
 		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context}
 		dest := make([]byte, kmeta.Attr.Size)
 		_, readStatus := clientFile.Read(dest, 0)
@@ -88,11 +88,12 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			fmt.Println("file transferred over")
 			status := tmpout.Status
 
-			kmeta.Replicas = append(kmeta.Replicas, self.sfsaddr)
+      kmeta.Replicas[self.fsaddr] = ServerFileMeta{self.fsaddr, 0, 0}
 			e = self.kc.Set(input.Name, kmeta)
 			if e != nil {
 				panic(e)
 			}
+      e = self.kc.AddServerMeta(input.Name, self.fsaddr, true)
 			output.Status = status
 	}
 	return nil
@@ -180,7 +181,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 			panic(err)
 		}		
 	}
-
+  self.kc.RemoveServerMeta(input.Old, self.Addr, false)
 	return nil
 }
 
@@ -245,22 +246,24 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 	fmt.Println("Unlink: "+input.Name)
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil { return e }
-	if self.Addr == kmeta.Primary {
+	if self.Addr == kmeta.Primary.Addr {
 		e = self.kc.Remove(input.Name)
 		if e != nil {
 			panic(e)
 		}
 		self.sfs.Unlink(input, output)
-		for _, replicaAddr := range kmeta.Replicas {
+    self.kc.RemoveServerMeta(input.Name, self.Addr, false)
+		for _, replica := range kmeta.Replicas {
 			// get client
-			client := self.serverfsm[replicaAddr]
+			client := self.serverfsm[replica.Addr]
 			e = client.Unlink(input, output)
 			if e != nil {
 				return e
 			}
+      self.kc.RemoveServerMeta(input.Name, replica.Addr, true)
 		}
 	} else {
-		client := self.servercoords[kmeta.Primary]
+		client := self.servercoords[kmeta.Primary.Addr]
 		e = client.Unlink(input, output)
 		if e != nil {
 			panic(e)
@@ -297,13 +300,13 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 	if e != nil {
 		return e
 	}
-	if self.Addr == kmeta.Primary {
+	if self.Addr == kmeta.Primary.Addr {
 		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
 		self.sfs.FileWrite(input, output)
 
-		for _, replicaAddr := range kmeta.Replicas {
+		for _, replica := range kmeta.Replicas {
 			fmt.Println("clients", self.serverfsm, replicaAddr)
-			client := self.serverfsm[replicaAddr]
+			client := self.serverfsm[replica.Addr]
 			e = client.FileWrite(input, output)
 			if e != nil {
 				return e
@@ -318,7 +321,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 
 	} else {
 		fmt.Println("Not primary, forwarding request to primary coordinator")
-		client := self.servercoords[kmeta.Primary]
+		client := self.servercoords[kmeta.Primary.Addr]
 		input.Kmeta = kmeta
 		e = client.FileWrite(input, output)
 		if e != nil {

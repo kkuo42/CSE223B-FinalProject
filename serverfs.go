@@ -121,7 +121,6 @@ func (self *ServerFS) FileWrite(input *FileWrite_input, output *FileWrite_output
 		self.Create(&fi, &fo)
 	}
 	output.Written, output.Status = self.openFiles[input.Path].Write(input.Data, input.Off)
-	fmt.Println("past file write")
 	output.Attr, _ = self.fs.GetAttr(input.Path, input.Context)
 	return nil
 }

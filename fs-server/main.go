@@ -40,7 +40,6 @@ func main() {
     sharepoint := flag.Arg(0)
     coordaddr := flag.Arg(1)
     fsaddr := flag.Arg(2)
-
     port := strings.Split(coordaddr, ":")[1]
 
     // setup server coordinator 

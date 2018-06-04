@@ -9,11 +9,22 @@ import (
 	"fmt"
 )
 
+type ServerMeta struct {
+    PrimaryFor map[string]string
+    ReplicaFor map[string]string
+}
+
+type ServerFileMeta struct {
+    Addr string
+    WriteCount int
+    ReadCount int
+}
+
 // this struct is to maintain all information relative to the keeper
 type KeeperMeta struct {
 	Attr fuse.Attr
-	Primary string
-	Replicas []string
+	Primary ServerFileMeta
+	Replicas map[string]ServerFileMeta
 }
 
 type KeeperClient struct {
@@ -45,6 +56,7 @@ func (k *KeeperClient) Init() error {
 	}
 
 	// attempt to create alive and data dirs, if it fails itll be caught below
+	_, _= k.client.Create("/alivemeta", []byte("alivemeta"), int32(0), zk.WorldACL(zk.PermAll))
 	_, _= k.client.Create("/alivecoord", []byte("alive"), int32(0), zk.WorldACL(zk.PermAll))
 	_, _= k.client.Create("/alivefs", []byte("alive"), int32(0), zk.WorldACL(zk.PermAll))
 	_, _= k.client.Create("/data", []byte("data"), int32(0), zk.WorldACL(zk.PermAll))
@@ -52,18 +64,39 @@ func (k *KeeperClient) Init() error {
 	if k.coordaddr != "" && k.fsaddr != "" {
 		_, err := k.client.Create("/alivecoord/"+k.coordaddr, []byte(k.coordaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 		_, err = k.client.Create("/alivefs/"+k.fsaddr, []byte(k.fsaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+    empty := map[string]string{}
+    sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
+    d, e := json.Marshal(&sm)
+    if e != nil { return e }
+    _, err = k.client.Create("/alivemeta/"+k.coordaddr, d, int32(0), zk.WorldACL(zk.PermAll))
+    _, err = k.client.Create("/alivemeta/"+k.fsaddr, d, int32(0), zk.WorldACL(zk.PermAll))
 		if err != nil {
 			log.Fatalf("error creating node in zkserver")
 			return err
 		}
 	}
 	// set up serverfs, servercoords
+  go k.Watch()
 	return nil
 }
 
-func (k *KeeperClient) AliveWatch() (<-chan zk.Event, error) {
-	_, _, watch, e := k.client.ChildrenW("/alivecoord")
-	return watch, e
+func (k *KeeperClient) Watch() {
+    for {
+        backs, watch, e := k.AliveWatch()
+        if e != nil { panic(e) }
+        if len(backs) < len(k.serverfs) {
+            k.UpdateBackends()
+        } else if len(backs) > len(k.serverfs) {
+            k.UpdateBackends()
+        }
+        <-watch
+    }
+}
+
+
+func (k *KeeperClient) AliveWatch() ([]string, <-chan zk.Event, error) {
+    backs, _, watch, e := k.client.ChildrenW("/alivecoord")
+    return backs, watch, e
 }
 
 func (k *KeeperClient) GetBackendMaps() (map[string]*ClientFs, map[string]*ClientFs, error) {
@@ -168,6 +201,13 @@ func (k *KeeperClient) Set(path string, data KeeperMeta) error {
 	return nil
 }
 
+func (k *KeeperClient) GetWatch(watch string) (<-chan zk.Event, error) {
+    _, _, w, e := k.client.ChildrenW(watch)
+    fmt.Println(e)
+    if e != nil { return nil, e }
+    return w, e
+}
+
 func (k *KeeperClient) GetChildren(path string) ([]string, error) {
 	// if in the root directory don't add /
 	inputstr := "/data"
@@ -208,7 +248,17 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 }
 
 func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
-	kmeta := KeeperMeta{Primary: k.coordaddr, Attr: attr}
+        // brand new file, initialize new file metadata
+        primary := ServerFileMeta{k.coordaddr, 0, 0}
+        // pick a replica on the median
+        replica := k.serverfs[len(k.serverfs)/2].Addr
+        var kmeta KeeperMeta
+        if replica != k.fsaddr {
+            replicas := map[string]ServerFileMeta{replica: ServerFileMeta{replica, 0, 0}}
+            kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
+        } else {
+            kmeta = KeeperMeta{Primary: primary, Attr: attr}
+        }
 	d, e := json.Marshal(&kmeta)
 	if e != nil {
 		return e
@@ -218,6 +268,8 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
 	if e != nil {
 		return e
 	}
+        k.AddServerMeta(path, k.coordaddr, false)
+        k.AddServerMeta(path, replica, true)
 	return nil
 }
 
@@ -246,4 +298,75 @@ func (k *KeeperClient) RemoveDir(path string) error {
 		}
 	}
 	return nil
+}
+
+func (k *KeeperClient) Inc(path string, read bool) error {
+    kmeta, e := k.Get(path)
+    if e != nil { return e }
+    // if this server is not the primary go increment in replica
+    if k.coordaddr != kmeta.Primary.Addr {
+        sfm := kmeta.Replicas[k.fsaddr]
+        if read {
+            sfm.ReadCount += 1
+        } else {
+            sfm.WriteCount += 1
+        }
+        kmeta.Replicas[k.fsaddr] = sfm
+    } else {
+        if read {
+            kmeta.Primary.ReadCount += 1
+        } else {
+            kmeta.Primary.WriteCount += 1
+        }
+    }
+    e = k.Set(path, kmeta)
+    if e != nil { return e }
+    return nil
+}
+
+// add a primary or a replica to a server's metadata
+func (k *KeeperClient) AddServerMeta(path, addr string, replica bool) error {
+    smeta, _, e := k.client.Get("/alivemeta/" + addr)
+    if e != nil { return e}
+
+    var sm ServerMeta
+    e = json.Unmarshal(smeta, &sm)
+    if e != nil { return e }
+    if replica {
+        if sm.ReplicaFor[path] == "" {
+            sm.ReplicaFor = map[string]string{path: path}
+        } else {
+            sm.ReplicaFor[path] = path
+        }
+    } else {
+        if sm.PrimaryFor[path] == "" {
+            sm.PrimaryFor = map[string]string{path: path}
+        } else {
+            sm.PrimaryFor[path] = path
+        }
+    }
+    smdata, e := json.Marshal(sm)
+    if e != nil { fmt.Println("marshal error", e); return e }
+    _, e = k.client.Set("/alivemeta/"+addr, smdata, -1)
+    if e != nil { fmt.Println("set error", e) ;return e }
+    return nil
+}
+
+func (k *KeeperClient) RemoveServerMeta(path, addr string, replica bool) error {
+    smeta, _, e := k.client.Get("/alivemeta/" + addr)
+    if e != nil { return e }
+
+    var sm ServerMeta
+    e = json.Unmarshal(smeta, &sm)
+    if e != nil { return e }
+    if replica {
+        delete(sm.ReplicaFor, path)
+    } else {
+        delete(sm.PrimaryFor, path)
+    }
+    smdata, e := json.Marshal(&sm)
+    if e != nil { return e }
+    _, e = k.client.Set("/alivemeta/"+addr, smdata, -1)
+    if e != nil { return e }
+    return nil
 }
