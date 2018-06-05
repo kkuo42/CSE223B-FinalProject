@@ -328,7 +328,7 @@ func (self *ServerCoordinator) FileRead(input *FileRead_input, output *FileRead_
 }
 
 func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
-	fmt.Println("Write -", "Path:", input.Path)
+	fmt.Println("Write -", "Path:", input.Path, "Data:", input.Data)
 
 	kmeta, e := self.kc.Get(input.Path)
 	if e != nil {
@@ -349,7 +349,6 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		}
 
 		// increment on the correct addr TODO?
-		fmt.Println("incrementing" ,input.Faddr)
 		kmeta.Attr = *output.Attr
 		e = self.kc.IncAddr(input.Path, input.Faddr, kmeta, false)
 		if e != nil {
