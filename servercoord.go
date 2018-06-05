@@ -272,9 +272,7 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 
 func (self *ServerCoordinator) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create:", input.Path)
-		
 	self.checkAndCreatePath(input.Path)
-	
 	self.sfs.Create(input, output)
 
 	e := self.kc.Create(input.Path, *output.Attr)
