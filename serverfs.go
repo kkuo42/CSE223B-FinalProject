@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"path/filepath"
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
@@ -79,16 +78,9 @@ func (self *ServerFS) Rename(input *Rename_input, output *Rename_output) error {
 
 func (self *ServerFS) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	fmt.Println("making dir", input.Name)
-	// mkdir all instead
-	dirs := strings.Split(input.Name, "/")
-	for index, _ := range dirs {
-		curPath := strings.Join(dirs[:index+1], "/")
-		output.Status = self.fs.Mkdir(input.Name, input.Mode, input.Context)
-		if output.Status != fuse.OK && output.Status != 17 {
-			fmt.Println(curPath, ": ", output.Status)
-			panic(fmt.Errorf("mkdirall error"))
-		}
-	}
+	e := self.checkAndCreatePath(input.Name, input.Context)
+	if e != nil { panic(e) }
+	output.Status = self.fs.Mkdir(input.Name, input.Mode, input.Context)
 	// get attributes after make 
 	output.Attr, _ = self.fs.GetAttr(input.Name, input.Context)
 	return nil
@@ -110,6 +102,9 @@ func (self *ServerFS) Unlink(input *Unlink_input, output *Unlink_output) error {
 func (self *ServerFS) Create(input *Create_input, output *Create_output) error {
 	//delete(self.openFiles, input.Path)
 	//delete(self.openFlags, input.Path)
+	// before creating the file we need to ensure the path is good to go
+	e := self.checkAndCreatePath(input.Path, input.Context)
+	if e != nil { panic(e) }
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
 	output.Attr, _ = self.fs.GetAttr(input.Path, input.Context)
 	self.openFiles[input.Path] = loopbackFile
@@ -130,23 +125,13 @@ func (self *ServerFS) FileRead(input *FileRead_input, output *FileRead_output) e
 
 func (self *ServerFS) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
 	if _, ok := self.openFiles[input.Path]; !ok {
-		// go open it
-		fmt.Println("file isnt open, opening it", input.Path)
-		// create dir before open
-		dir := filepath.Dir(input.Path)
-		mi := Mkdir_input{dir, 0755, input.Context}
-		mo := Mkdir_output{}
-		e := self.Mkdir(&mi, &mo)
-		if e != nil {
-			return e
-		}
 		fi := Create_input{input.Path, input.Flags, 0755, input.Context}
 		fo := Create_output{}
-		e = self.Create(&fi, &fo)
+		e := self.Create(&fi, &fo)
+		if e != nil { panic(e) }
 	}
 	output.Written, output.Status = self.openFiles[input.Path].Write(input.Data, input.Off)
 	output.Attr, _ = self.fs.GetAttr(input.Path, input.Context)
-	fmt.Println("wrote data")
 	return nil
 }
 
@@ -158,5 +143,26 @@ func (self *ServerFS) FileRelease(input *FileRelease_input, output *FileRelease_
 	//Removes file from open 
 	self.openFiles = append(self.openFiles[:input.FileId], self.openFiles[input.FileId+1:])
 	*/
+	return nil
+}
+
+func (self *ServerFS) checkAndCreatePath(path string, context *fuse.Context) error {
+	dirs := strings.Split(path, "/")
+	// remove all but last filename or dir
+	if len(dirs[len(dirs)-1]) == 0 {
+		dirs = dirs[:len(dirs)-2]
+	} else {
+		dirs = dirs[:len(dirs)-1]
+	}
+
+	for index, _ := range dirs {
+		curPath := strings.Join(dirs[:index+1], "/")
+		outStatus := self.fs.Mkdir(curPath, GeoFSMode, context)
+		if outStatus != fuse.OK && outStatus != 17 {
+			// status 17 is file already exists, couldnt find const
+			fmt.Println(curPath, ": ", outStatus)
+			return fmt.Errorf("Error Creating Path: %v %v\n", path, outStatus)
+		}
+	}
 	return nil
 }

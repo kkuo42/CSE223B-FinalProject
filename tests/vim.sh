@@ -14,12 +14,14 @@ echo -n "a" > data/to0/a
 sleep 1
 assertExist data/from0/a
 assertExist data/from1/a
+assertNotExist data/from2/a
 
 echo "cat data/to1/a"
 cat data/to1/a > /dev/null
 sleep 1
 assertFile data/from0/a "a"
 assertFile data/from1/a "a"
+assertNotExist data/from2/a
 assertFile data/to0/a "a"
 assertFile data/to1/a "a"
 
@@ -30,10 +32,14 @@ assertExist data/from0/a~
 assertNotExist data/from0/a
 assertExist data/from1/a~
 assertNotExist data/from1/a
+assertNotExist data/from2/a
+assertNotExist data/from2/a~
 assertExist data/to0/a~
 assertNotExist data/to0/a
 assertExist data/to1/a~
 assertNotExist data/to1/a
+assertExist data/to2/a~
+assertNotExist data/to2/a
 
 echo "writing ab to data/to1/a"
 echo -n "ab" > data/to1/a
