@@ -68,7 +68,9 @@ echo "writing a to data/to0/a"
 echo -n "a" > data/to0/a
 sleep 1
 assertExist "data/from0/a"
-assertNotExist "data/from1/a"
+# It should exist here now because the primary/replica metadata remains on the
+# keeper even though the file was marked as deleted. Write gets sent to the replica
+assertExist "data/from1/a"
 assertExist "data/to0/a"
 assertExist "data/to1/a"
 echo "cat data/to1/a"

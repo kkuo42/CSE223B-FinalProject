@@ -135,3 +135,32 @@ func (self *ServerFS) FileRelease(input *FileRelease_input, output *FileRelease_
 	*/
 	return nil
 }
+
+/*
+func (self *ServerFS) checkAndCreatePath(path string) {
+	dirs := strings.Split(path, "/")
+	// remove all but last filename or dir
+	if len(dirs[len(dirs)-1]) == 0 {
+		dirs = dirs[:len(dirs)-2]
+	} else {
+		dirs = dirs[:len(dirs)-1]
+	}
+
+	// for each directory in the path
+	for index, _ := range dirs {
+		curPath := strings.Join(dirs[:index+1], "/")
+
+		// 16877 is the mode used in servercoord
+        input := &Mkdir_input{Name: curPath, Mode: 16877}
+        output := &Mkdir_output{}
+
+		err := self.Mkdir(input, output)
+		if err != nil || output.Status != fuse.OK {
+			fmt.Println("already has",curPath, ": ", err, output.Status)
+			continue
+		} else {
+			fmt.Println("directory "+curPath+" just created on server")
+		}
+	}
+}
+*/

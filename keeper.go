@@ -7,6 +7,7 @@ import (
 	"time"
 	"log"
 	"fmt"
+	"errors"
 )
 
 type ServerMeta struct {
@@ -23,6 +24,7 @@ type ServerFileMeta struct {
 // this struct is to maintain all information relative to the keeper
 type KeeperMeta struct {
 	Attr fuse.Attr
+	Deleted bool
 	Primary ServerFileMeta
 	Replicas map[string]ServerFileMeta
 }
@@ -189,6 +191,9 @@ func (k *KeeperClient) Get(path string) (KeeperMeta, error) {
 	}
 	var kmeta KeeperMeta
 	e = json.Unmarshal(data, &kmeta)
+	if kmeta.Deleted {
+		return kmeta, errors.New("Deleted boolean")
+	}
 	return kmeta, nil
 }
 
@@ -242,30 +247,42 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 			log.Println("error here:", e)
 			return nil, e
 		}
-		fileEntries = append(fileEntries, fuse.DirEntry{Name: f, Mode: fm.Attr.Mode})
+		if !fm.Deleted{
+			fileEntries = append(fileEntries, fuse.DirEntry{Name: f, Mode: fm.Attr.Mode})
+		}
 	}
 	return fileEntries, nil
 }
 
-func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
-        // brand new file, initialize new file metadata
-        primary := ServerFileMeta{k.coordaddr, 0, 0}
-        // pick a replica on the median
-        //replica := k.serverfs[len(k.serverfs)/2].Addr
-        replicas := map[string]ServerFileMeta{}
-        var kmeta KeeperMeta
-	/*
-        if replica != k.fsaddr {
-            replicas[replica] = ServerFileMeta{replica, 0, 0}
-	}
-	*/
-        kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
-	d, e := json.Marshal(&kmeta)
-	if e != nil {
-		return e
-	}
+func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) error {
+	data, _, e := k.client.Get("/data/" + path)
+	var kmeta KeeperMeta
+	if e == nil {
+		e = json.Unmarshal(data, &kmeta)
+		if kmeta.Deleted {
+			kmeta.Attr = attr
+			kmeta.Deleted = false
+			d, _ := json.Marshal(&kmeta)
+			_, e = k.client.Set("/data/"+path, []byte(d), -1)
+		} else {
+			return errors.New("value already exists in keeper, but isn't deleted")
+		}
+	} else {
 
-	_, e = k.client.Create("/data/"+path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+		// brand new file, initialize new file metadata
+		primary := ServerFileMeta{k.coordaddr, 0, 0}
+		// pick a replica on the median
+		//replica := k.serverfs[len(k.serverfs)/2].Addr
+		replicas := map[string]ServerFileMeta{}
+		/*
+		if replica != k.fsaddr {
+			replicas[replica] = ServerFileMeta{replica, 0, 0}
+		}
+	*/
+		km := KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
+		d, _ := json.Marshal(&km)
+		_, e = k.client.Create("/data/"+path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+	}
 	if e != nil {
 		return e
 	}
@@ -278,21 +295,24 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
 	return nil
 }
 
-func (k *KeeperClient) Remove(path string) error {
-	err := k.client.Delete("/data/"+path, -1)
-
-	if err != nil {
-		return err
+func (k *KeeperClient) Remove(path string, data KeeperMeta) error {
+	data.Deleted = true
+	m, e := json.Marshal(&data)
+	_, e = k.client.Set("/data/"+path, m, -1)
+	if e != nil {
+		return e
 	}
+
 	return nil
 }
 
 func (k *KeeperClient) RemoveDir(path string) error {
 	// recursively delete all children
+	kmeta, e := k.Get(path)
 	children, e := k.GetChildren(path)
 	if len(children) == 0 || e != nil {
 		// it is safe to delete this node
-		k.Remove(path)
+		k.Remove(path, kmeta)
 	} else {
 		// go through each child and recursively delete on it
 		for _, f := range children {
