@@ -264,7 +264,7 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 	} else {
 
         // brand new file, initialize new file metadata
-        primary := ServerFileMeta{k.coordaddr, 0, 0}
+        primary := ServerFileMeta{k.coordaddr, 0, 1}
         // pick a replica on the median
         replica := k.serverfs[len(k.serverfs)/2].Addr
 		if Debug {
@@ -325,28 +325,37 @@ func (k *KeeperClient) RemoveDir(path string) error {
 	return nil
 }
 
+func (k *KeeperClient) IncAddr(path, addr string, kmeta KeeperMeta, read bool) error {
+	if addr != kmeta.Primary.Addr {
+		if sfm, ok := kmeta.Replicas[addr]; ok {
+			if read {
+			    sfm.ReadCount += 1
+			} else {
+			    sfm.WriteCount += 1
+			}
+			kmeta.Replicas[addr] = sfm
+		}
+	} else {
+		if read {
+		    kmeta.Primary.ReadCount += 1
+		} else {
+		    kmeta.Primary.WriteCount += 1
+		}
+	}
+	e := k.Set(path, kmeta)
+	if e != nil { return e }
+	return nil
+}
+
 func (k *KeeperClient) Inc(path string, read bool) error {
-    kmeta, e := k.Get(path)
-    if e != nil { return e }
-    // if this server is not the primary go increment in replica
-    if k.coordaddr != kmeta.Primary.Addr {
-        sfm := kmeta.Replicas[k.fsaddr]
-        if read {
-            sfm.ReadCount += 1
-        } else {
-            sfm.WriteCount += 1
-        }
-        kmeta.Replicas[k.fsaddr] = sfm
-    } else {
-        if read {
-            kmeta.Primary.ReadCount += 1
-        } else {
-            kmeta.Primary.WriteCount += 1
-        }
-    }
-    e = k.Set(path, kmeta)
-    if e != nil { return e }
-    return nil
+	// if this server is not the primary go increment in replica
+	kmeta, e := k.Get(path)
+	if e != nil { return e }
+	if k.coordaddr != kmeta.Primary.Addr {
+		return k.IncAddr(path, k.fsaddr, kmeta, read)
+	} else {
+		return k.IncAddr(path, k.coordaddr, kmeta, read)
+	}
 }
 
 // add a primary or a replica to a server's metadata

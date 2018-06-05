@@ -67,7 +67,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			panic(e)
 		}
 		client := self.servercoords[kmeta.Primary.Addr]
-		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context}
+		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context, Addr: self.sfsaddr}
 		dest := make([]byte, kmeta.Attr.Size)
 		_, readStatus := clientFile.Read(dest, 0)
 
@@ -78,7 +78,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			panic(tmpout.Status)
 		}
 		if readStatus == fuse.OK {
-			fi := FileWrite_input{input.Name, dest, 0, input.Context, input.Flags, kmeta}
+			fi := FileWrite_input{input.Name, dest, 0, input.Context, input.Flags, kmeta, self.sfsaddr}
 			fo := FileWrite_output{}
 			e = self.sfs.FileWrite(&fi, &fo)
 			} else { panic("could not read primary copy") }
@@ -92,6 +92,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			}
 		    e = self.kc.AddServerMeta(input.Name, self.sfsaddr, true)
 			output.Status = status
+			//self.kc.Inc(input.Name, true)
 	}
 	return nil
 }
@@ -209,6 +210,7 @@ func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) e
 	if e != nil {
 		panic(e)
 	}
+	// TODO probably unecessary since we arent keeping track
 
 	// if this is the primary do removing
 	// else forward task
@@ -321,6 +323,7 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 func (self *ServerCoordinator) FileRead(input *FileRead_input, output *FileRead_output) error {
 	fmt.Println("Read -", "Path:", input.Path)
 	self.sfs.FileRead(input, output)
+	self.kc.Inc(input.Path, true)
 	return nil
 }
 
@@ -340,12 +343,15 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 			client := self.serverfsm[replica.Addr]
 			e = client.FileWrite(input, output)
 			if e != nil {
+				fmt.Println("File Write Problem", output.Status)
 				return e
 			}
 		}
 
+		// increment on the correct addr TODO?
+		fmt.Println("incrementing" ,input.Faddr)
 		kmeta.Attr = *output.Attr
-		e = self.kc.Set(input.Path, kmeta)
+		e = self.kc.IncAddr(input.Path, input.Faddr, kmeta, false)
 		if e != nil {
 			return e
 		}
@@ -354,6 +360,8 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		fmt.Println("Not primary, forwarding request to primary coordinator")
 		client := self.servercoords[kmeta.Primary.Addr]
 		input.Kmeta = kmeta
+		// tell to increment write on this server
+		input.Faddr = self.sfsaddr
 		e = client.FileWrite(input, output)
 		if e != nil {
 			return e

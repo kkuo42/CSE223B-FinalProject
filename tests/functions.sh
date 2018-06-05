@@ -193,3 +193,21 @@ assertFilesEqual() {
 			exit 1
 	fi
 }
+assertZkMetaEqual() {
+	OUT=`python zkcheck.py $1 $2 $3`
+	OUTPUT=`python zkcheck.py $1 $2 $3 | tail -1`
+	if [ "$OUTPUT" == "pass" ]; then
+		echo "PASSED assertZkMetaEqual. $1 $2 $3"
+	else
+		echo "$OUT"
+		echo "FAILED assertZkMetaEqual. $1 $2 $3"
+		echo "Exiting"
+		echo
+		stop_jobs
+		tail logs/*.txt
+		echo
+		echo "FAILED $testname"
+		echo
+		exit 1
+	fi
+}
