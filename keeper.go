@@ -16,7 +16,8 @@ type ServerMeta struct {
 }
 
 type ServerFileMeta struct {
-    Addr string
+	CoordAddr string
+    SFSAddr string
     WriteCount int
     ReadCount int
 }
@@ -123,12 +124,12 @@ func (k *KeeperClient) GetBackends() ([]*ClientFs, []*ClientFs, error) {
 func (k *KeeperClient) UpdateBackends() error {
 	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
 	if e != nil {
-		log.Fatalf("error getting alive nodes", e)
+		log.Fatalf("error getting alive nodes")
 		return e
 	}
 	fsbacks, _, _, e := k.client.ChildrenW("/alivefs")
 	if e != nil {
-		log.Fatalf("error getting alive nodes", e)
+		log.Fatalf("error getting alive nodes")
 		return e
 	}
 	if len(coordbacks) != len(fsbacks) {
@@ -263,34 +264,37 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 		}
 	} else {
 
-        // brand new file, initialize new file metadata
-        primary := ServerFileMeta{k.coordaddr, 0, 1}
-        // pick a replica on the median
-        replica := k.serverfs[len(k.serverfs)/2].Addr
-	if Debug {
-		replica = ReplicaAddrs[k.fsaddr]
-	}
-	fmt.Printf("assigning server %v as replica\n", replica)
-	replicas := map[string]ServerFileMeta{}
-        var kmeta KeeperMeta
-        if replica != k.fsaddr {
-            replicas[replica] = ServerFileMeta{replica, 0, 0}
-	}
-        kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
-		d, e := json.Marshal(&kmeta)
-		if e != nil {
-			return "", e
-		}
+    // pick a replica on the median
+    replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
 
-		_, e = k.client.Create("/data/"+path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
-		if e != nil {
-			return "", e
-		}
-        k.AddServerMeta(path, k.coordaddr, false)
-		if replica != k.fsaddr {
-			k.AddServerMeta(path, replica, true)
-			return replica, nil
-		}
+	if Debug {
+		replicaAddr = ReplicaAddrs[k.fsaddr]
+	}
+
+    // brand new file, initialize new file metadata
+	serverFileMeta := ServerFileMeta{k.coordaddr, replicaAddr, 0, 0}
+
+	fmt.Printf("assigning server %v as replica\n", replicaAddr)
+	replicaAddrs := map[string]ServerFileMeta{}
+	var kmeta KeeperMeta
+	if replicaAddr != k.fsaddr {
+		replicaAddrs[replicaAddr] = serverFileMeta
+	}
+	kmeta = KeeperMeta{Primary: serverFileMeta, Replicas: replicaAddrs, Attr: attr}
+	d, e := json.Marshal(&kmeta)
+	if e != nil {
+		return "", e
+	}
+
+	_, e = k.client.Create("/data/"+path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+	if e != nil {
+		return "", e
+	}
+    k.AddServerMeta(path, k.coordaddr, false)
+
+	if replicaAddr != k.fsaddr {
+		k.AddServerMeta(path, replicaAddr, true)
+		return replicaAddr, nil
 	}
 	return "", nil
 }

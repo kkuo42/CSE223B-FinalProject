@@ -61,6 +61,9 @@ func Watch(self *ServerCoordinator) error {
 func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) error {
 	fmt.Println("Open:", input.Name)
 	e := self.sfs.Open(input, output)
+
+	// TODO: Maybe call keeper .get first because what if the file is lingering? is release/unlink correct?
+
 	if e != nil {
 		// the file doesn't exist on the server
 		fmt.Println("file "+input.Name+" not currently on server")
@@ -69,8 +72,10 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 		if e != nil {
 			panic(e)
 		}
-		client := self.servercoords[kmeta.Primary.Addr]
+
+		client := self.servercoords[kmeta.Primary.CoordAddr]
 		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context, Addr: self.sfsaddr}
+
 		dest := make([]byte, kmeta.Attr.Size)
 		_, readStatus := clientFile.Read(dest, 0)
 
@@ -88,7 +93,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			fmt.Println("file transferred over")
 			status := tmpout.Status
 
-			kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.sfsaddr, 0, 0}
+			kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.Addr, self.sfsaddr, 0, 0}
 			e = self.kc.Set(input.Name, kmeta)
 			if e != nil {
 				panic(e)
@@ -141,14 +146,15 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 
 	// if this is the primary do renaming
 	// else forward task
-	if self.Addr == kmeta.Primary.Addr {
+	if self.Addr == kmeta.Primary.CoordAddr {
 
 		Lock(self, input.Old)
 		Lock(self, input.New)
+
 		// rename in backups
 		for _, replica:= range kmeta.Replicas {
-			fmt.Printf("asking %v to rename file: %v to %v\n", replica.Addr, input.Old, input.New)
-			err := self.serverfsm[replica.Addr].Rename(input, output)
+			fmt.Printf("asking %v to rename file: %v to %v\n", replica.SFSAddr, input.Old, input.New)
+			err := self.serverfsm[replica.SFSAddr].Rename(input, output)
 			if err != nil || output.Status != fuse.OK {
 				fmt.Println(input.Old, input.New, ": ", err, output.Status)
 				panic(err)
@@ -189,7 +195,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 		Unlock(self, input.New)
 
 	} else {
-		err := self.servercoords[kmeta.Primary.Addr].Rename(input, output)
+		err := self.servercoords[kmeta.Primary.CoordAddr].Rename(input, output)
 		if err != nil || output.Status != fuse.OK {
 			fmt.Println(input.Old, input.New, ": ", err, output.Status)
 			panic(err)
@@ -226,11 +232,11 @@ func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) e
 
 	// if this is the primary do removing
 	// else forward task
-	if self.Addr == kmeta.Primary.Addr {
+	if self.Addr == kmeta.Primary.CoordAddr {
 		// removing from backups
 		for _, replica := range kmeta.Replicas {
-			fmt.Printf("asking %v to remove dir: %v\n", replica.Addr, input.Name)
-			err := self.serverfsm[replica.Addr].Rmdir(input, output)
+			fmt.Printf("asking %v to remove dir: %v\n", replica.SFSAddr, input.Name)
+			err := self.serverfsm[replica.SFSAddr].Rmdir(input, output)
 			if err != nil || output.Status != fuse.OK {
 				fmt.Println(input.Name, ": ", err, output.Status)
 				panic(err)
@@ -248,7 +254,7 @@ func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) e
 			return e
 		}
 	} else {
-		err := self.servercoords[kmeta.Primary.Addr].Rmdir(input, output)
+		err := self.servercoords[kmeta.Primary.CoordAddr].Rmdir(input, output)
 		if err != nil || output.Status != fuse.OK {
 			fmt.Println(input.Name, ": ", err, output.Status)
 			panic(err)
@@ -264,10 +270,11 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil { return e }
 
-	if self.Addr == kmeta.Primary.Addr {
+	if self.Addr == kmeta.Primary.CoordAddr {
 		Lock(self, input.Name)
 
 		e = self.kc.Remove(input.Name, kmeta)
+
 		if e != nil {
 			panic(e)
 		}
@@ -275,17 +282,17 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 		self.kc.RemoveServerMeta(input.Name, self.Addr, false)
 		for _, replica := range kmeta.Replicas {
 			// get client
-			client := self.serverfsm[replica.Addr]
+			client := self.serverfsm[replica.SFSAddr]
 			e = client.Unlink(input, output)
 			if e != nil {
 				return e
 			}
-			self.kc.RemoveServerMeta(input.Name, replica.Addr, true)
+			self.kc.RemoveServerMeta(input.Name, replica.SFSAddr, true)
 		}
 
 		Unlock(self, input.Name)
 	} else {
-		client := self.servercoords[kmeta.Primary.Addr]
+		client := self.servercoords[kmeta.Primary.CoordAddr]
 		e = client.Unlink(input, output)
 		if e != nil {
 			panic(e)
@@ -354,15 +361,15 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 	if e != nil {
 		return e
 	}
-	if self.Addr == kmeta.Primary.Addr {
+	if self.Addr == kmeta.Primary.CoordAddr {
 		Lock(self, input.Path)
 
 		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
 		self.sfs.FileWrite(input, output)
 
 		for _, replica := range kmeta.Replicas {
-			fmt.Println("Write on replica:", replica.Addr)
-			client := self.serverfsm[replica.Addr]
+			fmt.Println("Write on replica:", replica.SFSAddr)
+			client := self.serverfsm[replica.SFSAddr]
 			e = client.FileWrite(input, output)
 			if e != nil {
 				fmt.Println("File Write Problem", output.Status)
@@ -380,7 +387,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		Unlock(self, input.Path)
 	} else {
 		fmt.Println("Not primary, forwarding request to primary coordinator")
-		client := self.servercoords[kmeta.Primary.Addr]
+		client := self.servercoords[kmeta.Primary.CoordAddr]
 		input.Kmeta = kmeta
 		// tell to increment write on this server
 		input.Faddr = self.sfsaddr
