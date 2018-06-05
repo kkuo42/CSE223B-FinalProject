@@ -8,8 +8,6 @@ setup_servers
 echo -n "init" > data/to0/a
 echo -n "init" > acheck
 
-#cat data/to0/a
-#cat data/to1/a
 cat data/to2/a
 
 echo "doing 5 writes on a from serv 0, 10 from serv 1, 2 from serv 2"
