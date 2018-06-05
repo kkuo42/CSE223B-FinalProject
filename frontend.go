@@ -23,7 +23,8 @@ type Frontend struct {
 	pathfs.FileSystem
 	backendFs BackendFs
 	kc *KeeperClient
-  backpref string
+	backpref string
+	addr string
 }
 
 func NewFrontendRemotelyBacked(backaddr string) Frontend {
@@ -62,6 +63,7 @@ func (self *Frontend) RefreshClient() error {
         if e == nil {
             self.backendFs = back
             fmt.Println("pref connected to", back.Addr)
+	    self.addr = back.Addr
             return nil
         }
         fmt.Println("couldnt connect to prefered back")
@@ -70,6 +72,7 @@ func (self *Frontend) RefreshClient() error {
         e = back.Connect()
         if e == nil {
             self.backendFs = back
+	    self.addr = back.Addr
             fmt.Println("connected to", back.Addr)
             return nil
         }
@@ -92,7 +95,7 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
                 return self.Open(name, flags, context)
 	}
 	if output.Status == fuse.OK {
-		fuseFile = &FrontendFile{Name: name, Backend: self.backendFs, Context: context}
+		fuseFile = &FrontendFile{Name: name, Backend: self.backendFs, Context: context, Addr: self.addr}
 	}
 
 	return fuseFile, output.Status
@@ -106,10 +109,10 @@ func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse
 	e := self.backendFs.OpenDir(input, output)
 
 	if e != nil {
-    log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n, find new server", e)
-    e = self.RefreshClient()
-    if e != nil { panic(e) }
-    return self.OpenDir(name, context)
+		log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n, find new server", e)
+		e = self.RefreshClient()
+		if e != nil { panic(e) }
+		return self.OpenDir(name, context)
 	}
 
 	return output.Stream, output.Status
@@ -210,7 +213,7 @@ func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fu
                 if e != nil { panic(e) }
                 return self.Create(path, flags, mode, context)
 	}
-	fuseFile = &FrontendFile{Backend: self.backendFs, Name: path, Context: context}
+	fuseFile = &FrontendFile{Backend: self.backendFs, Name: path, Context: context, Addr: self.addr}
 
 	return fuseFile, output.Status
 }
@@ -222,6 +225,7 @@ type FrontendFile struct {
 	Name string
 	Backend BackendFs
 	Context *fuse.Context
+	Addr string
 }
 func (self *FrontendFile) SetInode(*nodefs.Inode) {} //ok
 func (self *FrontendFile) String() string {return fmt.Sprintf("FrontendFile(%v:%v)", self.Backend, self.Name)}
@@ -241,7 +245,7 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 
 func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fuse.Status) {
 	fmt.Println("Write:", self.Name)
-	input := &FileWrite_input{Path: self.Name, Data: data, Off:off, Context: self.Context}
+	input := &FileWrite_input{Path: self.Name, Data: data, Off:off, Context: self.Context, Faddr: self.Addr}
 	output := &FileWrite_output{}
 	e := self.Backend.FileWrite(input, output)
 

@@ -105,6 +105,7 @@ type FileWrite_input struct {
 
 	Flags uint32
 	Kmeta KeeperMeta
+	Faddr string
 }
 
 type FileWrite_output struct {
