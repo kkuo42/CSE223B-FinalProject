@@ -9,3 +9,4 @@ echo
 . tests/unlink.sh
 . tests/vim.sh
 . tests/deepdir.sh
+. tests/zkmeta.sh
