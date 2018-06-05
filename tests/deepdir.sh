@@ -18,6 +18,7 @@ sleep 1
 
 assertExist 	"data/from0/a/b/c" # check that nesting works
 assertExist 	"data/to1/a/b/c"
+assertExist 	"data/to2/a/b/c"
 
 echo "writing something to data/to0/a/b/c/something"
 echo "something" >> data/to0/a/b/c/something
@@ -28,18 +29,22 @@ cat data/to0/a/b/c/something > /dev/null
 sleep 1
 
 assertExist 	"data/from0/a/b/c/something"
-assertNotExist 	"data/from1/a/b/c/something"
+assertExist 	"data/from1/a/b/c/something"
+assertNotExist 	"data/from2/a/b/c/something"
 assertExist 	"data/to0/a/b/c/something"
 assertExist 	"data/to1/a/b/c/something"
+assertExist 	"data/to2/a/b/c/something"
 
-echo "cat data/to0/a/b/c/something"
-cat data/to1/a/b/c/something > /dev/null
+echo "cat data/to2/a/b/c/something"
+cat data/to2/a/b/c/something > /dev/null
 sleep 1
 
 assertExist "data/from0/a/b/c/something"
 assertExist "data/from1/a/b/c/something"
+assertExist "data/from2/a/b/c/something"
 assertExist "data/to0/a/b/c/something"
 assertExist "data/to1/a/b/c/something"
+assertExist "data/to2/a/b/c/something"
 
 assertFilesEqual "data/to0/a/b/c/something" "data/to1/a/b/c/something"
 
@@ -62,8 +67,10 @@ sleep 1
 
 assertExist "data/from0/e/f/g/something"
 assertExist "data/from1/e/f/g/something"
+assertNotExist "data/from2/e/f/g/something"
 assertExist "data/to0/e/f/g/something"
 assertExist "data/to1/e/f/g/something"
+assertExist "data/to2/e/f/g/something"
 
 touch temp
 echo "something" >> temp
@@ -87,8 +94,10 @@ sleep 1
 
 assertNotExist 	"data/from0/h/i/j/something"
 assertExist 	"data/from1/h/i/j/something"
+assertExist 	"data/from2/h/i/j/something"
 assertExist 	"data/to0/h/i/j/something"
 assertExist 	"data/to1/h/i/j/something"
+assertExist 	"data/to2/h/i/j/something"
 
 
 # rename a file int he deepdir of another server
@@ -103,14 +112,17 @@ echo "writing something to data/to0/v/w/x/something"
 echo "something" >> data/to0/v/w/x/something
 sleep 1
 
+# replica rename
 echo "moving something to data/to1/v/w/x/else"
 mv data/to1/v/w/x/something data/to1/v/w/x/else
 sleep 1
 
 assertExist 	"data/from0/v/w/x/else"
-assertNotExist 	"data/from1/v/w/x/else"
+assertExist 	"data/from1/v/w/x/else"
+assertNotExist 	"data/from2/v/w/x/else"
 assertExist 	"data/to0/v/w/x/else"
 assertExist 	"data/to1/v/w/x/else"
+assertExist 	"data/to2/v/w/x/else"
 
 
 # make a dir in the deep dir of another server
@@ -127,8 +139,10 @@ sleep 1
 
 assertNotExist 	"data/from0/l/m/n/o"
 assertExist 	"data/from1/l/m/n/o"
+assertExist 	"data/from2/l/m/n/o"
 assertExist 	"data/to0/l/m/n/o"
 assertExist 	"data/to1/l/m/n/o"
+assertExist 	"data/to2/l/m/n/o"
 
 # delete a dir int he deepdir of another server
 echo 
@@ -144,8 +158,10 @@ sleep 1
 
 assertNotExist 	"data/from0/p/q/r"
 assertNotExist 	"data/from1/p/q/r"
+assertNotExist 	"data/from2/p/q/r"
 assertNotExist 	"data/to0/p/q/r"
 assertNotExist 	"data/to1/p/q/r"
+assertNotExist 	"data/to2/p/q/r"
 
 
 # rename a dir int he deepdir of another server
@@ -161,9 +177,11 @@ mv data/to1/s/t/u data/to1/s/t/v
 sleep 1
 
 assertExist 	"data/from0/s/t/v"
-assertNotExist 	"data/from1/s/t/v"
+assertExist 	"data/from1/s/t/v"
+assertNotExist 	"data/from2/s/t/v"
 assertExist 	"data/to0/s/t/v"
 assertExist 	"data/to1/s/t/v"
+assertExist 	"data/to2/s/t/v"
 
 stop_jobs
 pass_test   

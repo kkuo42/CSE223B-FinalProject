@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
-    "strings"
 )
 
 type ServerCoordinator struct {
@@ -62,7 +61,6 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 	if e != nil {
 		// the file doesn't exist on the server
 		fmt.Println("file "+input.Name+" not currently on server")
-		self.checkAndCreatePath(input.Name)
 
 		kmeta, e := self.kc.Get(input.Name)
 		if e != nil {
@@ -153,7 +151,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 		}
 		// rename in keeper
 		// create the file
-		e := self.kc.Create(input.New, kmeta.Attr)
+		_, e := self.kc.Create(input.New, kmeta.Attr)
 		if e != nil {
 			// do nothing for now
 			fmt.Println("mv error", e)
@@ -185,12 +183,17 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 }
 
 func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
-	fmt.Println("make dir:", input.Name)
-	self.checkAndCreatePath(input.Name)
 	self.sfs.Mkdir(input, output)
-	e := self.kc.Create(input.Name, *output.Attr)
+	replica, e := self.kc.Create(input.Name, *output.Attr)
 	if e != nil {
 		return e
+	}
+	if replica != "" {
+		// create the dir on the replica as well
+		e = self.serverfsm[replica].Mkdir(input, output)
+		if e != nil {
+			return e
+		}
 	}
 	return nil
 }
@@ -272,12 +275,9 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 
 func (self *ServerCoordinator) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create:", input.Path)
-		
-	self.checkAndCreatePath(input.Path)
-	
 	self.sfs.Create(input, output)
 
-	e := self.kc.Create(input.Path, *output.Attr)
+	_, e := self.kc.Create(input.Path, *output.Attr)
 	if e != nil {
 		return e
 	}
@@ -302,7 +302,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		self.sfs.FileWrite(input, output)
 
 		for _, replica := range kmeta.Replicas {
-			fmt.Println("clients", self.serverfsm, replica.Addr)
+			fmt.Println("Write on replica:", replica.Addr)
 			client := self.serverfsm[replica.Addr]
 			e = client.FileWrite(input, output)
 			if e != nil {
@@ -340,65 +340,6 @@ func (self *ServerCoordinator) FileRelease(input *FileRelease_input, output *Fil
 	self.openFiles = append(self.openFiles[:input.FileId], self.openFiles[input.FileId+1:])
 	*/
 	return nil
-}
-
-/*
-this function will split the path and check that all directories exits
-if a directory does not exist it will create it on this coordinators ServerFs
-
-it does not do the last element of the split because it is the thing the calling 
-op is woking on
-*/
-func (self *ServerCoordinator) checkAndCreatePath(path string) {
-	dirs := strings.Split(path, "/")
-	// remove all but last filename or dir
-	if len(dirs[len(dirs)-1]) == 0 {
-		dirs = dirs[:len(dirs)-2]
-	} else {
-		dirs = dirs[:len(dirs)-1]
-	}
-
-	// for each directory in the path
-	for index, _ := range dirs {
-		curPath := strings.Join(dirs[:index+1], "/")
-		kmeta, e := self.kc.Get(curPath)
-		if e != nil {
-			panic(e)
-		}
-
-		// check if it alread has it
-		if self.Addr == kmeta.Primary.Addr {
-			continue
-		}
-		for _, replica := range kmeta.Replicas {
-			if self.sfsaddr == replica.Addr {
-		continue
-		}
-        }
-	fmt.Println("directory "+curPath+" not currently on server")
-
-        // create the dir lovally
-        /* 
-        TODO: HOW ARE WE HANDLING LOCAL CHANGES? 
-        GOING THROUGH the ServerFS will cause loopback rpc
-        */
-        input := &Mkdir_input{Name: curPath, Mode: kmeta.Attr.Mode}
-        output := &Mkdir_output{}
-
-	err := self.sfs.Mkdir(input, output)
-	if err != nil || output.Status != fuse.OK {
-		fmt.Println(curPath, ": ", err, output.Status)
-		panic(err)
-	}
-
-	// update keeper
-	kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.sfsaddr, 0, 0}
-	e = self.kc.Set(curPath, kmeta)
-	if e != nil {
-		panic(e)
-	}
-
-	}
 }
 
 // assert that ServerCoordinator implements BackendFs

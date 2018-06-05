@@ -64,19 +64,19 @@ func (k *KeeperClient) Init() error {
 	if k.coordaddr != "" && k.fsaddr != "" {
 		_, err := k.client.Create("/alivecoord/"+k.coordaddr, []byte(k.coordaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 		_, err = k.client.Create("/alivefs/"+k.fsaddr, []byte(k.fsaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
-    empty := map[string]string{}
-    sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
-    d, e := json.Marshal(&sm)
-    if e != nil { return e }
-    _, err = k.client.Create("/alivemeta/"+k.coordaddr, d, int32(0), zk.WorldACL(zk.PermAll))
-    _, err = k.client.Create("/alivemeta/"+k.fsaddr, d, int32(0), zk.WorldACL(zk.PermAll))
+		empty := map[string]string{}
+		sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
+		d, e := json.Marshal(&sm)
+		if e != nil { return e }
+		_, err = k.client.Create("/alivemeta/"+k.coordaddr, d, int32(0), zk.WorldACL(zk.PermAll))
+		_, err = k.client.Create("/alivemeta/"+k.fsaddr, d, int32(0), zk.WorldACL(zk.PermAll))
 		if err != nil {
 			log.Fatalf("error creating node in zkserver")
 			return err
 		}
 	}
 	// set up serverfs, servercoords
-  go k.Watch()
+	go k.Watch()
 	return nil
 }
 
@@ -140,12 +140,9 @@ func (k *KeeperClient) UpdateBackends() error {
 	for i, addr := range fsbacks {
 		go func(a string) {
 			c := NewClientFs(a)
-			// if it is not this server then connect
-			if a != k.fsaddr {
-				e := c.Connect()
-				if e != nil {
-					log.Println("keeper couldnt connect to backend", a)
-				}
+			e := c.Connect()
+			if e != nil {
+				log.Println("keeper couldnt connect to backend", a)
 			}
 			serverfs = append(serverfs, c)
 			done <- true
@@ -153,12 +150,9 @@ func (k *KeeperClient) UpdateBackends() error {
 
 		go func(a string) {
 			c := NewClientFs(a)
-			// if it is not this server then connect
-			if a != k.fsaddr {
-				e := c.Connect()
-				if e != nil {
-					log.Println("keeper couldnt connect to backend", a)
-				}
+			e := c.Connect()
+			if e != nil {
+				log.Println("keeper couldnt connect to backend", a)
 			}
 			servercoords = append(servercoords, c)
 			done <- true
@@ -247,35 +241,36 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 	return fileEntries, nil
 }
 
-func (k *KeeperClient) Create(path string, attr fuse.Attr) error {
+func (k *KeeperClient) Create(path string, attr fuse.Attr) (string, error) {
         // brand new file, initialize new file metadata
         primary := ServerFileMeta{k.coordaddr, 0, 0}
         // pick a replica on the median
-        //replica := k.serverfs[len(k.serverfs)/2].Addr
+        replica := k.serverfs[len(k.serverfs)/2].Addr
+	if Debug {
+		replica = ReplicaAddrs[k.fsaddr]
+	}
+	fmt.Printf("assigning server %v as replica\n", replica)
         replicas := map[string]ServerFileMeta{}
         var kmeta KeeperMeta
-	/*
         if replica != k.fsaddr {
             replicas[replica] = ServerFileMeta{replica, 0, 0}
 	}
-	*/
         kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
 	d, e := json.Marshal(&kmeta)
 	if e != nil {
-		return e
+		return "", e
 	}
 
 	_, e = k.client.Create("/data/"+path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
 	if e != nil {
-		return e
+		return "", e
 	}
-	/*
         k.AddServerMeta(path, k.coordaddr, false)
 	if replica != k.fsaddr {
 		k.AddServerMeta(path, replica, true)
+		return replica, nil
 	}
-	*/
-	return nil
+	return "", nil
 }
 
 func (k *KeeperClient) Remove(path string) error {

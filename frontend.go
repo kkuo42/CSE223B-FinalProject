@@ -240,6 +240,7 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 }
 
 func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fuse.Status) {
+	fmt.Println("Write:", self.Name)
 	input := &FileWrite_input{Path: self.Name, Data: data, Off:off, Context: self.Context}
 	output := &FileWrite_output{}
 	e := self.Backend.FileWrite(input, output)

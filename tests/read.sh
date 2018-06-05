@@ -20,17 +20,21 @@ echo "cat data/to0/a"
 cat data/to0/a > /dev/null
 sleep 1
 assertExist "data/from0/a"
-assertNotExist "data/from1/a"
+assertExist "data/from1/a"
+assertNotExist "data/from2/a"
 assertExist "data/to0/a"
 assertExist "data/to1/a"
+assertExist "data/to2/a"
 
-echo "cat data/to1/a"
-cat data/to1/a > /dev/null
+echo "cat data/to2/a"
+cat data/to2/a > /dev/null
 sleep 1
 assertExist "data/from0/a"
 assertExist "data/from1/a"
+assertExist "data/from2/a"
 assertExist "data/to0/a"
 assertExist "data/to1/a"
+assertExist "data/to2/a"
 
 stop_jobs
 pass_test
