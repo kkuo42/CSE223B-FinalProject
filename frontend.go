@@ -127,10 +127,12 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 	e := self.backendFs.GetAttr(input, output)
 
 	if e != nil {
-    log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
-    e = self.RefreshClient()
-    if e != nil { panic(e) }
-    return self.GetAttr(name, context)
+		if e.Error() != "Deleted boolean" {
+			log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
+			e = self.RefreshClient()
+			if e != nil { panic(e) }
+			return self.GetAttr(name, context)
+		}
 	}
 
 	return output.Attr, output.Status

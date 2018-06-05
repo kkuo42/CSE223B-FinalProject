@@ -147,6 +147,7 @@ func (self *ServerFS) FileRelease(input *FileRelease_input, output *FileRelease_
 }
 
 func (self *ServerFS) checkAndCreatePath(path string, context *fuse.Context) error {
+
 	dirs := strings.Split(path, "/")
 	// remove all but last filename or dir
 	if len(dirs[len(dirs)-1]) == 0 {
@@ -166,3 +167,4 @@ func (self *ServerFS) checkAndCreatePath(path string, context *fuse.Context) err
 	}
 	return nil
 }
+

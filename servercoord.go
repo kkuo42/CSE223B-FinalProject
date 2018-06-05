@@ -90,7 +90,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			if e != nil {
 				panic(e)
 			}
-		        e = self.kc.AddServerMeta(input.Name, self.sfsaddr, true)
+		    e = self.kc.AddServerMeta(input.Name, self.sfsaddr, true)
 			output.Status = status
 	}
 	return nil
@@ -114,6 +114,10 @@ func (self *ServerCoordinator) GetAttr(input *GetAttr_input, output *GetAttr_out
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
 	// do nothing
+		if e.Error() == "Deleted boolean" {
+			self.sfs.GetAttr(input, output)
+			return nil
+		}
 	}
 	output.Attr = &kmeta.Attr
 	if output.Attr.Ino == 0 {
@@ -124,7 +128,7 @@ func (self *ServerCoordinator) GetAttr(input *GetAttr_input, output *GetAttr_out
 
 func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output) error {
 	fmt.Println("Rename:",input.Old,"to",input.New)
-	
+
 	// get attributes of dir
 	kmeta, e := self.kc.Get(input.Old)
 	if e != nil {
@@ -151,7 +155,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 		}
 		// rename in keeper
 		// create the file
-		_, e := self.kc.Create(input.New, kmeta.Attr)
+		_, e := self.kc.Create(input.New, kmeta.Attr, kmeta.Deleted)
 		if e != nil {
 			// do nothing for now
 			fmt.Println("mv error", e)
@@ -165,7 +169,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 			panic(e)
 		}
 		// remove the old file
-		e = self.kc.Remove(input.Old)
+		e = self.kc.Remove(input.Old, kmeta)
 		if e != nil {
 			// do nothing for now
 			fmt.Println("mv error", e)
@@ -178,13 +182,12 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 			panic(err)
 		}
 	}
-	self.kc.RemoveServerMeta(input.Old, self.Addr, false)
 	return nil
 }
 
 func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
 	self.sfs.Mkdir(input, output)
-	replica, e := self.kc.Create(input.Name, *output.Attr)
+	replica, e := self.kc.Create(input.Name, *output.Attr, false)
 	if e != nil {
 		return e
 	}
@@ -247,7 +250,7 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil { return e }
 	if self.Addr == kmeta.Primary.Addr {
-		e = self.kc.Remove(input.Name)
+		e = self.kc.Remove(input.Name, kmeta)
 		if e != nil {
 			panic(e)
 		}
@@ -275,12 +278,43 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 
 func (self *ServerCoordinator) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create:", input.Path)
-	self.sfs.Create(input, output)
 
-	_, e := self.kc.Create(input.Path, *output.Attr)
-	if e != nil {
-		return e
+	kmeta, e := self.kc.Get(input.Path)
+	if e.Error() == "Deleted boolean" {
+		if self.Addr == kmeta.Primary.Addr {
+
+			self.sfs.Create(input, output)
+			_, e := self.kc.Create(input.Path, *output.Attr, kmeta.Deleted)
+			if e != nil {
+				return e
+			}
+
+			for _, replica := range kmeta.Replicas {
+				// get client
+				client := self.serverfsm[replica.Addr]
+				e = client.Create(input, output)
+				if e != nil {
+					return e
+				}
+			}
+
+		} else {
+			client := self.servercoords[kmeta.Primary.Addr]
+
+			fmt.Println(self.servercoords, kmeta)
+			e = client.Create(input, output)
+			if e != nil {
+				panic(e)
+			}
+		}
+	} else {
+		self.sfs.Create(input, output)
+		_, e := self.kc.Create(input.Path, *output.Attr, false)
+		if e != nil {
+			return e
+		}
 	}
+
 	return nil
 }
 
