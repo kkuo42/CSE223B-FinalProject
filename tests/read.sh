@@ -27,7 +27,7 @@ assertExist "data/to1/a"
 assertExist "data/to2/a"
 
 echo "cat data/to2/a"
-cat data/to1/a > /dev/null
+cat data/to2/a > /dev/null
 sleep 1
 assertExist "data/from0/a"
 assertExist "data/from1/a"

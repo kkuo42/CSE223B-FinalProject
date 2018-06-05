@@ -153,7 +153,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 		}
 		// rename in keeper
 		// create the file
-		e := self.kc.Create(input.New, kmeta.Attr)
+		_, e := self.kc.Create(input.New, kmeta.Attr)
 		if e != nil {
 			// do nothing for now
 			fmt.Println("mv error", e)
@@ -185,12 +185,18 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 }
 
 func (self *ServerCoordinator) Mkdir(input *Mkdir_input, output *Mkdir_output) error {
-	fmt.Println("make dir:", input.Name)
 	self.checkAndCreatePath(input.Name)
 	self.sfs.Mkdir(input, output)
-	e := self.kc.Create(input.Name, *output.Attr)
+	replica, e := self.kc.Create(input.Name, *output.Attr)
 	if e != nil {
 		return e
+	}
+	if replica != "" {
+		// create the dir on the replica as well
+		e = self.serverfsm[replica].Mkdir(input, output)
+		if e != nil {
+			return e
+		}
 	}
 	return nil
 }
@@ -275,7 +281,7 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 	self.checkAndCreatePath(input.Path)
 	self.sfs.Create(input, output)
 
-	e := self.kc.Create(input.Path, *output.Attr)
+	_, e := self.kc.Create(input.Path, *output.Attr)
 	if e != nil {
 		return e
 	}
@@ -300,7 +306,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		self.sfs.FileWrite(input, output)
 
 		for _, replica := range kmeta.Replicas {
-			fmt.Println("clients", self.serverfsm, replica.Addr)
+			fmt.Println("Write on replica:", replica.Addr)
 			client := self.serverfsm[replica.Addr]
 			e = client.FileWrite(input, output)
 			if e != nil {
@@ -357,6 +363,7 @@ func (self *ServerCoordinator) checkAndCreatePath(path string) {
 	}
 
 	// for each directory in the path
+	OUTER:
 	for index, _ := range dirs {
 		curPath := strings.Join(dirs[:index+1], "/")
 		kmeta, e := self.kc.Get(curPath)
@@ -370,32 +377,31 @@ func (self *ServerCoordinator) checkAndCreatePath(path string) {
 		}
 		for _, replica := range kmeta.Replicas {
 			if self.sfsaddr == replica.Addr {
-		continue
+				continue OUTER
+			}
 		}
-        }
-	fmt.Println("directory "+curPath+" not currently on server")
+		fmt.Println("directory "+curPath+" not currently on server")
 
-        // create the dir lovally
-        /* 
-        TODO: HOW ARE WE HANDLING LOCAL CHANGES? 
-        GOING THROUGH the ServerFS will cause loopback rpc
-        */
-        input := &Mkdir_input{Name: curPath, Mode: kmeta.Attr.Mode}
-        output := &Mkdir_output{}
+		// create the dir lovally
+		/* 
+		TODO: HOW ARE WE HANDLING LOCAL CHANGES? 
+		GOING THROUGH the ServerFS will cause loopback rpc
+		*/
+		input := &Mkdir_input{Name: curPath, Mode: kmeta.Attr.Mode}
+		output := &Mkdir_output{}
 
-	err := self.sfs.Mkdir(input, output)
-	if err != nil || output.Status != fuse.OK {
-		fmt.Println(curPath, ": ", err, output.Status)
-		panic(err)
-	}
+		err := self.sfs.Mkdir(input, output)
+		if err != nil || output.Status != fuse.OK {
+			fmt.Println(curPath, ": ", err, output.Status)
+			panic(err)
+		}
 
-	// update keeper
-	kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.sfsaddr, 0, 0}
-	e = self.kc.Set(curPath, kmeta)
-	if e != nil {
-		panic(e)
-	}
-
+		// update keeper
+		kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.sfsaddr, 0, 0}
+		e = self.kc.Set(curPath, kmeta)
+		if e != nil {
+			panic(e)
+		}
 	}
 }
 
