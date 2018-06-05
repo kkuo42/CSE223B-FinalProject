@@ -10,7 +10,7 @@ import (
 type ServerCoordinator struct {
 	path string
 	Addr string
-	sfsaddr string
+	SFSAddr string
 	sfs *ServerFS
 	kc *KeeperClient
 	serverfsm map[string]*ClientFs
@@ -28,7 +28,7 @@ func NewServerCoordinator(directory, coordaddr, sfsaddr string) *ServerCoordinat
 	go Serve(sfs)
 	// create a new keeper registering the address of this server
 	kc := NewKeeperClient(coordaddr, sfsaddr)
-	return &ServerCoordinator{path: directory, Addr: coordaddr, sfsaddr: sfsaddr, sfs: sfs, kc: kc}
+	return &ServerCoordinator{path: directory, Addr: coordaddr, SFSAddr: sfsaddr, sfs: sfs, kc: kc}
 }
 
 func (self *ServerCoordinator) Init() error {
@@ -93,12 +93,13 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			fmt.Println("file transferred over")
 			status := tmpout.Status
 
-			kmeta.Replicas[self.sfsaddr] = ServerFileMeta{self.Addr, self.sfsaddr, 0, 0}
+			kmeta.Replicas[self.SFSAddr] = ServerFileMeta{self.Addr, self.SFSAddr, 0, 0}
 			e = self.kc.Set(input.Name, kmeta)
 			if e != nil {
 				panic(e)
 			}
 		    e = self.kc.AddServerMeta(input.Name, self.sfsaddr, true)
+
 			output.Status = status
 			//self.kc.Inc(input.Name, true)
 	}
@@ -427,3 +428,96 @@ func Unlock (self *ServerCoordinator, file string) {
 
 // assert that ServerCoordinator implements BackendFs
 var _ BackendFs = new(ServerCoordinator)
+
+
+
+
+
+func (self *ServerCoordinator) AddPathBackup(path, newCoordAddr string) error {
+	input := &Open_input{Name: path}
+	output := &Open_output{}
+	e := self.servercoords[newCoordAddr].Open(input, output)
+	if e != nil || output.Status != fuse.OK {
+		panic(e)
+	}
+
+	return nil
+}
+
+// can be called from any coord?
+func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string) error {
+	// get keeper data
+	kmeta, e := self.kc.Get(path)
+	if e != nil {
+		panic(e)
+	}
+	
+	// check path is on backup
+	_, exists := kmeta.Replicas[backupSFSAddr]
+	if !exists {
+		panic("expected backup does not exists")
+	}
+
+	// remove backup
+	client := self.serverfsm[backupSFSAddr]
+	input := &Unlink_input{Name: path}
+	output := &Unlink_output{}	
+	e = client.Unlink(input, output)
+	if e != nil || output.Status != fuse.OK {
+		panic(e)
+	}
+	self.kc.RemoveServerMeta(input.Name, backupSFSAddr, true)
+		
+	// update keeper
+	delete(kmeta.Replicas, backupSFSAddr)
+	e = self.kc.Set(path, kmeta)
+	if e != nil {
+		panic(e)
+	}
+
+	return nil
+
+}
+
+// should be called on new primary
+func (self *ServerCoordinator) SwapPathPrimary(path string, currentPrimaryDead bool) error {
+	// get keeper data
+	kmeta, e := self.kc.Get(path)
+	if e != nil {
+		panic(e)
+	}
+
+	// Chooose replacement
+	var newPrimary ServerFileMeta
+	maxWrite := -1
+	for _, replica := range kmeta.Replicas {
+		if replica.WriteCount > maxWrite {
+			maxWrite = replica.WriteCount
+			newPrimary = replica
+		}
+	}
+	if (maxWrite < 0) {
+		panic("failed to find replacement primary")
+	}
+	
+	// perform swap
+	if !currentPrimaryDead {
+		oldPrimary := kmeta.Primary
+		self.kc.RemoveServerMeta(path, oldPrimary.CoordAddr, false)
+		self.kc.AddServerMeta(path, oldPrimary.SFSAddr, true)
+		kmeta.Replicas[kmeta.Primary.CoordAddr] = kmeta.Primary
+	}
+
+	self.kc.RemoveServerMeta(path, newPrimary.SFSAddr, true)
+	self.kc.AddServerMeta(path, newPrimary.CoordAddr, false)
+	kmeta.Primary = newPrimary
+	delete(kmeta.Replicas, newPrimary.SFSAddr)
+	
+	// update keeper
+	e = self.kc.Set(path, kmeta)
+	if e != nil {
+		panic(e)
+	}
+
+	return nil
+}
