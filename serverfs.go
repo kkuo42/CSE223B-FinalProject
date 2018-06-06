@@ -16,19 +16,19 @@ import (
 type ServerFS struct {
 	path string
 	Addr string
+	coordAddr string
 	fs pathfs.FileSystem
 	openFiles map[string]nodefs.File
 	openFlags map[string]uint32
 }
 
-func NewServerFS(directory, addr string) *ServerFS {
+func NewServerFS(directory, addr, coordAddr string) *ServerFS {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
 	fs := NewCustomLoopbackFileSystem(directory)
 	openFiles := make(map[string]nodefs.File)
 	openFlags := make(map[string]uint32)
-
-	return &ServerFS{directory, addr, fs, openFiles, openFlags}
+	return &ServerFS{directory, addr, coordAddr, fs, openFiles, openFlags}
 }
 
 func Serve(sfs *ServerFS) {
@@ -164,6 +164,16 @@ func (self *ServerFS) checkAndCreatePath(path string, context *fuse.Context) err
 			fmt.Println(curPath, ": ", outStatus)
 			return fmt.Errorf("Error Creating Path: %v %v\n", path, outStatus)
 		}
+	}
+	return nil
+}
+
+
+func (self *ServerFS) GetAddress(input *string, output *string) error {
+	if *input == "server" {
+		*output = self.Addr
+	} else if *input == "coord" {
+		*output = self.coordAddr
 	}
 	return nil
 }

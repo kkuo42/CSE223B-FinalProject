@@ -264,37 +264,52 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 		}
 	} else {
 
-    // pick a replica on the median
-    replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
+	    // pick a replica on the median
+	    replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
 
-	if Debug {
-		replicaAddr = ReplicaAddrs[k.fsaddr]
-	}
+		if Debug {
+			replicaAddr = ReplicaAddrs[k.fsaddr]
+		}
 
-    // brand new file, initialize new file metadata
-	serverFileMeta := ServerFileMeta{k.coordaddr, replicaAddr, 0, 0}
+	    // brand new file, initialize new file metadata
+		serverFileMeta := ServerFileMeta{k.coordaddr, k.fsaddr, 0, 1}
 
-	fmt.Printf("assigning server %v as replica\n", replicaAddr)
-	replicaAddrs := map[string]ServerFileMeta{}
-	var kmeta KeeperMeta
-	if replicaAddr != k.fsaddr {
-		replicaAddrs[replicaAddr] = serverFileMeta
-	}
-	kmeta = KeeperMeta{Primary: serverFileMeta, Replicas: replicaAddrs, Attr: attr}
-	d, e := json.Marshal(&kmeta)
-	if e != nil {
-		return "", e
-	}
+		fmt.Printf("assigning server %v as replica\n", replicaAddr)
+		replicaAddrs := map[string]ServerFileMeta{}
+		var kmeta KeeperMeta
+		if replicaAddr != k.fsaddr { //THIS SHOULD ALWAYS BE TRUE?
+			var replicaCoordAddr string
+			addr_type := "coord"
+			// find the serverfs with the right addr
+			index := -1
+			for i, temp := range k.serverfs {
+				if temp.Addr == replicaAddr {
+					index = i
+					break
+				}
+			}
+			e := k.serverfs[index].GetAddress(&addr_type, &replicaCoordAddr)
+			if e != nil {
+				panic(e)
+			}
+			replicaAddrs[replicaAddr] = ServerFileMeta{replicaCoordAddr, replicaAddr, 0, 0}
+		}
+		kmeta = KeeperMeta{Primary: serverFileMeta, Replicas: replicaAddrs, Attr: attr}
+		d, e := json.Marshal(&kmeta)
+		if e != nil {
+			return "", e
+		}
 
-	_, e = k.client.Create("/data/"+path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
-	if e != nil {
-		return "", e
-	}
-    k.AddServerMeta(path, k.coordaddr, false)
+		_, e = k.client.Create("/data/"+path, []byte(d), int32(0), zk.WorldACL(zk.PermAll))
+		if e != nil {
+			return "", e
+		}
+	    k.AddServerMeta(path, k.coordaddr, false)
 
-	if replicaAddr != k.fsaddr {
-		k.AddServerMeta(path, replicaAddr, true)
-		return replicaAddr, nil
+		if replicaAddr != k.fsaddr {
+			k.AddServerMeta(path, replicaAddr, true)
+			return replicaAddr, nil
+		}
 	}
 	return "", nil
 }
@@ -302,7 +317,7 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 func (k *KeeperClient) Remove(path string, data KeeperMeta) error {
 	data.Deleted = true
 	// remove all of the servers that had this path
-	k.RemoveServerMeta(path, data.Primary.Addr, false)
+	k.RemoveServerMeta(path, data.Primary.CoordAddr, false)
 	for addr, _ := range data.Replicas {
 		k.RemoveServerMeta(path, addr, true)
 	}
@@ -335,7 +350,7 @@ func (k *KeeperClient) RemoveDir(path string) error {
 }
 
 func (k *KeeperClient) IncAddr(path, addr string, kmeta KeeperMeta, read bool) error {
-	if addr != kmeta.Primary.Addr {
+	if addr != kmeta.Primary.CoordAddr {
 		if sfm, ok := kmeta.Replicas[addr]; ok {
 			if read {
 			    sfm.ReadCount += 1
@@ -360,7 +375,7 @@ func (k *KeeperClient) Inc(path string, read bool) error {
 	// if this server is not the primary go increment in replica
 	kmeta, e := k.Get(path)
 	if e != nil { return e }
-	if k.coordaddr != kmeta.Primary.Addr {
+	if k.coordaddr != kmeta.Primary.CoordAddr {
 		return k.IncAddr(path, k.fsaddr, kmeta, read)
 	} else {
 		return k.IncAddr(path, k.coordaddr, kmeta, read)

@@ -194,8 +194,8 @@ assertFilesEqual() {
 	fi
 }
 assertZkMetaEqual() {
-	OUT=`python tests/zkcheck.py $1 $2 $3`
-	OUTPUT=`python tests/zkcheck.py $1 $2 $3 | tail -1`
+	OUT=`python2 tests/zkcheck.py $1 $2 $3`
+	OUTPUT=`python2 tests/zkcheck.py $1 $2 $3 | tail -1`
 	if [ "$OUTPUT" == "pass" ]; then
 		echo "PASSED assertZkMetaEqual. $1 $2 $3"
 	else

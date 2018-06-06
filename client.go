@@ -256,6 +256,22 @@ func (self *ClientFs) Rmdir(input *Rmdir_input, output *Rmdir_output) error {
 	return e
 }
 
+func (self *ClientFs) GetAddress(input *string, output *string) error {
+	e := self.Connect()
+	if e != nil { return e }
 
+	e = self.conn.Call("BackendFs.GetAddress", input, output)
+	if e != nil {
+		self.conn = nil
+		e = self.Connect()
+		if e == nil {
+			e = self.conn.Call("BackendFs.GetAddress", input, output)
+		}
+	}
+
+	return nil
+}
 // assert that ClientFs implements BackendFs
 var _ BackendFs = new(ClientFs)
+
+

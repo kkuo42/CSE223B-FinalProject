@@ -24,7 +24,7 @@ func NewServerCoordinator(directory, coordaddr, sfsaddr string) *ServerCoordinat
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
 	// serve the rpc client
-	sfs := NewServerFS(directory, sfsaddr)
+	sfs := NewServerFS(directory, sfsaddr, coordaddr)
 	go Serve(sfs)
 	// create a new keeper registering the address of this server
 	kc := NewKeeperClient(coordaddr, sfsaddr)
@@ -74,7 +74,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 		}
 
 		client := self.servercoords[kmeta.Primary.CoordAddr]
-		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context, Addr: self.sfsaddr}
+		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context, Addr: self.SFSAddr}
 
 		dest := make([]byte, kmeta.Attr.Size)
 		_, readStatus := clientFile.Read(dest, 0)
@@ -86,7 +86,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			panic(tmpout.Status)
 		}
 		if readStatus == fuse.OK {
-			fi := FileWrite_input{input.Name, dest, 0, input.Context, input.Flags, kmeta, self.sfsaddr}
+			fi := FileWrite_input{input.Name, dest, 0, input.Context, input.Flags, kmeta, self.SFSAddr}
 			fo := FileWrite_output{}
 			e = self.sfs.FileWrite(&fi, &fo)
 			} else { panic("could not read primary copy") }
@@ -98,7 +98,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			if e != nil {
 				panic(e)
 			}
-		    e = self.kc.AddServerMeta(input.Name, self.sfsaddr, true)
+		    e = self.kc.AddServerMeta(input.Name, self.SFSAddr, true)
 
 			output.Status = status
 			//self.kc.Inc(input.Name, true)
@@ -160,7 +160,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 				fmt.Println(input.Old, input.New, ": ", err, output.Status)
 				panic(err)
 			}
-			e := self.kc.AddServerMeta(input.New, replica.Addr, true)
+			e := self.kc.AddServerMeta(input.New, replica.SFSAddr, true)
 			if e != nil { return e }
 		}
 	        // rename in primary
@@ -308,7 +308,7 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 
 	kmeta, e := self.kc.Get(input.Path)
 	if e.Error() == "Deleted boolean" {
-		if self.Addr == kmeta.Primary.Addr {
+		if self.Addr == kmeta.Primary.CoordAddr {
 			Lock(self, input.Path)
 
 			self.sfs.Create(input, output)
@@ -319,7 +319,7 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 
 			for _, replica := range kmeta.Replicas {
 				// get client
-				client := self.serverfsm[replica.Addr]
+				client := self.serverfsm[replica.SFSAddr]
 				e = client.Create(input, output)
 				if e != nil {
 					return e
@@ -328,7 +328,7 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 
 			Unlock(self, input.Path)
 		} else {
-			client := self.servercoords[kmeta.Primary.Addr]
+			client := self.servercoords[kmeta.Primary.CoordAddr]
 			e = client.Create(input, output)
 			if e != nil {
 				panic(e)
@@ -391,7 +391,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		client := self.servercoords[kmeta.Primary.CoordAddr]
 		input.Kmeta = kmeta
 		// tell to increment write on this server
-		input.Faddr = self.sfsaddr
+		input.Faddr = self.SFSAddr
 		e = client.FileWrite(input, output)
 		if e != nil {
 			return e
@@ -521,3 +521,13 @@ func (self *ServerCoordinator) SwapPathPrimary(path string, currentPrimaryDead b
 
 	return nil
 }
+
+func (self *ServerCoordinator) GetAddress(input *string, output *string) error {
+	if *input == "server" {
+		*output = self.SFSAddr
+	} else if *input == "coord" {
+		*output = self.Addr
+	}
+	return nil
+}
+

@@ -138,6 +138,9 @@ type BackendFs interface {
 	FileWrite(input *FileWrite_input, output *FileWrite_output) error
 	FileRelease(input *FileRelease_input, output *FileRelease_output) error
 
+	// for getting addresses
+	GetAddress(input *string, output *string) error
+
 }
 
 
