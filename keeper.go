@@ -267,15 +267,15 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
         primary := ServerFileMeta{k.coordaddr, 0, 1}
         // pick a replica on the median
         replica := k.serverfs[len(k.serverfs)/2].Addr
-		if Debug {
-			replica = ReplicaAddrs[k.fsaddr]
-		}
-		fmt.Printf("assigning server %v as replica\n", replica)
-		replicas := map[string]ServerFileMeta{}
+	if Debug {
+		replica = ReplicaAddrs[k.fsaddr]
+	}
+	fmt.Printf("assigning server %v as replica\n", replica)
+	replicas := map[string]ServerFileMeta{}
         var kmeta KeeperMeta
         if replica != k.fsaddr {
             replicas[replica] = ServerFileMeta{replica, 0, 0}
-		}
+	}
         kmeta = KeeperMeta{Primary: primary, Replicas: replicas, Attr: attr}
 		d, e := json.Marshal(&kmeta)
 		if e != nil {
@@ -297,6 +297,11 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 
 func (k *KeeperClient) Remove(path string, data KeeperMeta) error {
 	data.Deleted = true
+	// remove all of the servers that had this path
+	k.RemoveServerMeta(path, data.Primary.Addr, false)
+	for addr, _ := range data.Replicas {
+		k.RemoveServerMeta(path, addr, true)
+	}
 	m, e := json.Marshal(&data)
 	_, e = k.client.Set("/data/"+path, m, -1)
 	if e != nil {

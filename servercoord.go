@@ -114,7 +114,7 @@ func (self *ServerCoordinator) GetAttr(input *GetAttr_input, output *GetAttr_out
 	// fetch the attr from zk
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil {
-	// do nothing
+		// do nothing
 		if e.Error() == "Deleted boolean" {
 			self.sfs.GetAttr(input, output)
 			return nil
@@ -147,8 +147,10 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 				fmt.Println(input.Old, input.New, ": ", err, output.Status)
 				panic(err)
 			}
-	    }
-	    // rename in primary
+			e := self.kc.AddServerMeta(input.New, replica.Addr, true)
+			if e != nil { return e }
+		}
+	        // rename in primary
 		err := self.sfs.Rename(input, output)
 		if err != nil || output.Status != fuse.OK {
 			fmt.Println(input.Old, input.New, ": ", err, output.Status)

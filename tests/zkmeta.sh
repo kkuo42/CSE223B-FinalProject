@@ -141,11 +141,59 @@ assertFilesEqual data/from1/c ccheck
 assertFilesEqual data/from2/c ccheck
 rm ccheck
 
-echo "removing c"
-rm data/to1/c
+echo "move a to anew"
+mv data/to2/a data/to2/anew
+assertNotExist "data/from0/a"
+assertNotExist "data/from1/a"
+assertNotExist "data/from2/a"
+assertExist "data/from0/anew"
+assertExist "data/from1/anew"
+assertExist "data/from2/anew"
+
+assertZkMetaEqual get /alivemeta/localhost:9500 9500_mv
+assertZkMetaEqual get /alivemeta/localhost:9501 9501_mv
+assertZkMetaEqual get /alivemeta/localhost:9502 9502_mv
+assertZkMetaEqual get /alivemeta/localhost:9600 9600_mv
+assertZkMetaEqual get /alivemeta/localhost:9601 9601_mv
+assertZkMetaEqual get /alivemeta/localhost:9602 9602_mv
+
+echo "move b to bnew"
+mv data/to2/b data/to2/bnew
+assertNotExist "data/from0/b"
+assertNotExist "data/from1/b"
+assertNotExist "data/from2/b"
+assertExist "data/from0/bnew"
+assertExist "data/from1/bnew"
+assertExist "data/from2/bnew"
+
+assertZkMetaEqual get /alivemeta/localhost:9500 9500_mv2
+assertZkMetaEqual get /alivemeta/localhost:9501 9501_mv2
+assertZkMetaEqual get /alivemeta/localhost:9502 9502_mv2
+assertZkMetaEqual get /alivemeta/localhost:9600 9600_mv2
+assertZkMetaEqual get /alivemeta/localhost:9601 9601_mv2
+assertZkMetaEqual get /alivemeta/localhost:9602 9602_mv2
+
+echo "move c to cnew"
+mv data/to2/c data/to2/cnew
 assertNotExist "data/from0/c"
 assertNotExist "data/from1/c"
 assertNotExist "data/from2/c"
+assertExist "data/from0/cnew"
+assertExist "data/from1/cnew"
+assertExist "data/from2/cnew"
+
+assertZkMetaEqual get /alivemeta/localhost:9500 9500_mv3
+assertZkMetaEqual get /alivemeta/localhost:9501 9501_mv3
+assertZkMetaEqual get /alivemeta/localhost:9502 9502_mv3
+assertZkMetaEqual get /alivemeta/localhost:9600 9600_mv3
+assertZkMetaEqual get /alivemeta/localhost:9601 9601_mv3
+assertZkMetaEqual get /alivemeta/localhost:9602 9602_mv3
+
+echo "removing c"
+rm data/to1/cnew
+assertNotExist "data/from0/cnew"
+assertNotExist "data/from1/cnew"
+assertNotExist "data/from2/cnew"
 
 assertZkMetaEqual get /alivemeta/localhost:9500 9500_rm1
 assertZkMetaEqual get /alivemeta/localhost:9501 9501_rm1
