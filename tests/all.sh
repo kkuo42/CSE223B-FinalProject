@@ -10,3 +10,4 @@ echo
 . tests/vim.sh
 . tests/deepdir.sh
 . tests/zkmeta.sh
+data_mvmt

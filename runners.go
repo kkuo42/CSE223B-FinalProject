@@ -155,7 +155,6 @@ func NewTester(pairs int) *tester {
 }
 
 func (self *tester) Stop() {
-    fmt.Println()
     cmd := exec.Command("zookeeper-3.4.12/bin/zkServer.sh", "stop")
     var out bytes.Buffer
     cmd.Stdout = &out
@@ -178,7 +177,7 @@ func (self *tester) setupZK() {
     cmd := exec.Command("zookeeper-3.4.12/bin/zkServer.sh", "start")
     var out bytes.Buffer
     cmd.Stdout = &out   
-    fmt.Println()
+
     err := cmd.Run()
     if err != nil {
         log.Fatal(err)
@@ -218,15 +217,33 @@ func (self *tester) stopPair(i int) {
     cmd.Run()
 }
 
-func (self *tester) CreateFile(coord *ServerCoordinator, path string) {
+func (self *tester) CreateFile(coord_id int, path string) {
     input := &Create_input{Path: path}
     output := &Create_output{}
-    e := coord.Create(input, output)
+    e := self.Coord[coord_id].Create(input, output)
     if e != nil || output.Status != fuse.OK {
         panic(e)
     }
 }
 
+func (self *tester) AssertFileExists(path string) {
+    fmt.Println(path)
+    if _, err := os.Stat(path); os.IsNotExist(err) {
+        panic("file does not exist " + path)
+    }
+
+}
+func (self *tester) AssertFileNotExists(path string) {
+    fmt.Println(path)
+    if _, err := os.Stat(path); err == nil {
+        panic("file does exists " + path)
+    }
+}
+func (self *tester) Assert(something bool) {
+    if !something {
+        panic("statement is false")       
+    }
+}
 
 
 

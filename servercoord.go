@@ -8,7 +8,7 @@ import (
 )
 
 type ServerCoordinator struct {
-	path string
+	Path string
 	Addr string
 	SFSAddr string
 	sfs *ServerFS
@@ -28,7 +28,7 @@ func NewServerCoordinator(directory, coordaddr, sfsaddr string) *ServerCoordinat
 	go Serve(sfs)
 	// create a new keeper registering the address of this server
 	kc := NewKeeperClient(coordaddr, sfsaddr)
-	return &ServerCoordinator{path: directory, Addr: coordaddr, SFSAddr: sfsaddr, sfs: sfs, kc: kc}
+	return &ServerCoordinator{Path: directory, Addr: coordaddr, SFSAddr: sfsaddr, sfs: sfs, kc: kc}
 }
 
 func (self *ServerCoordinator) Init() error {
@@ -455,6 +455,8 @@ func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string) erro
 	// check path is on backup
 	_, exists := kmeta.Replicas[backupSFSAddr]
 	if !exists {
+		fmt.Println(backupSFSAddr)
+		fmt.Println(kmeta.Replicas)
 		panic("expected backup does not exists")
 	}
 
@@ -505,7 +507,7 @@ func (self *ServerCoordinator) SwapPathPrimary(path string, currentPrimaryDead b
 		oldPrimary := kmeta.Primary
 		self.kc.RemoveServerMeta(path, oldPrimary.CoordAddr, false)
 		self.kc.AddServerMeta(path, oldPrimary.SFSAddr, true)
-		kmeta.Replicas[kmeta.Primary.CoordAddr] = kmeta.Primary
+		kmeta.Replicas[oldPrimary.SFSAddr] = oldPrimary
 	}
 
 	self.kc.RemoveServerMeta(path, newPrimary.SFSAddr, true)
