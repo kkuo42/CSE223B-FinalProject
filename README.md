@@ -2,6 +2,7 @@ This code allows a file system on one machine be hosted on a port so that anothe
 
 install go-fuse `go get github.com/hanwen/go-fuse/...`  
 install go-zookeeper `go get github.com/samuel/go-zookeeper/...`
+install zkcli `go get github.com/go-zkcli/zkcli` (for testing)
 
 ## Usage
 compile and install with `make` (NOTE: repository root folder must be named "proj")
