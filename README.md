@@ -1,7 +1,7 @@
 This code allows a file system on one machine be hosted on a port so that another process can use the file system with a FUSE mount. 
 
 install go-fuse `go get github.com/hanwen/go-fuse/...`  
-install go-zookeeper `go get github.com/samuel/go-zookeeper/...`
+install go-zookeeper `go get github.com/samuel/go-zookeeper/...`  
 install zkcli `go get github.com/go-zkcli/zkcli` (for testing)
 
 ## Usage
