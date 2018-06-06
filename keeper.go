@@ -367,17 +367,9 @@ func (k *KeeperClient) AddServerMeta(path, addr string, replica bool) error {
     e = json.Unmarshal(smeta, &sm)
     if e != nil { return e }
     if replica {
-        if sm.ReplicaFor[path] == "" {
-            sm.ReplicaFor = map[string]string{path: path}
-        } else {
             sm.ReplicaFor[path] = path
-        }
     } else {
-        if sm.PrimaryFor[path] == "" {
-            sm.PrimaryFor = map[string]string{path: path}
-        } else {
             sm.PrimaryFor[path] = path
-        }
     }
     smdata, e := json.Marshal(sm)
     if e != nil { fmt.Println("marshal error", e); return e }

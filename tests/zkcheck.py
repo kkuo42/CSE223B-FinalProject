@@ -31,7 +31,24 @@ file_check = {"a_data_init": {"Primary": {"WriteCount": 1, "ReadCount": 1, "Addr
 	     }
 
 server_check = {
-		
+		"9500_init": {"PrimaryFor": {"a":"a"}, "ReplicaFor": {}},
+		"9501_init": {"PrimaryFor": {"b":"b"}, "ReplicaFor": {}},
+		"9502_init": {"PrimaryFor": {"c":"c"}, "ReplicaFor": {}},
+		"9600_init": {"PrimaryFor": {}, "ReplicaFor": {"c":"c"}},
+		"9601_init": {"PrimaryFor": {}, "ReplicaFor": {"a":"a"}},
+		"9602_init": {"PrimaryFor": {}, "ReplicaFor": {"b":"b"}},
+		"9500_r": {"PrimaryFor": {"a":"a"}, "ReplicaFor": {}},
+		"9501_r": {"PrimaryFor": {"b":"b"}, "ReplicaFor": {}},
+		"9502_r": {"PrimaryFor": {"c":"c"}, "ReplicaFor": {}},
+		"9600_r": {"PrimaryFor": {}, "ReplicaFor": {"c":"c", "b":"b"}},
+		"9601_r": {"PrimaryFor": {}, "ReplicaFor": {"a":"a", "c":"c"}},
+		"9602_r": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a"}},
+		"9500_rm1": {"PrimaryFor": {"a":"a"}, "ReplicaFor": {}},
+		"9501_rm1": {"PrimaryFor": {"b":"b"}, "ReplicaFor": {}},
+		"9502_rm1": {"PrimaryFor": {}, "ReplicaFor": {}},
+		"9600_rm1": {"PrimaryFor": {}, "ReplicaFor": {"b":"b"}},
+		"9601_rm1": {"PrimaryFor": {}, "ReplicaFor": {"a":"a"}},
+		"9602_rm1": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a"}}
 	       }
 
 op = sys.argv[1]
@@ -52,4 +69,10 @@ if "data" in path:
 		print "checkdata:", file_check[check]
 		print "fail"
 elif "alivemeta" in path:
-	pass
+	print data
+	if data == server_check[check]:
+		print "pass"
+	else:
+		print "zkdata:", data
+		print "checkdata:", server_check[check]
+		print "fail"
