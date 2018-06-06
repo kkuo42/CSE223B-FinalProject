@@ -3,6 +3,7 @@ package proj
 import (
 	// "log"
 	"fmt"
+	"sync"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
 )
@@ -15,7 +16,9 @@ type ServerCoordinator struct {
 	kc *KeeperClient
 	serverfsm map[string]*ClientFs
 	servercoords map[string]*ClientFs
+	fileLocks map[string]*sync.Mutex
 	primary bool
+
 }
 
 func NewServerCoordinator(directory, coordaddr, sfsaddr string) *ServerCoordinator {
@@ -35,13 +38,14 @@ func (self *ServerCoordinator) Init() error {
 	if e != nil {
 		return e
 	}
+	self.fileLocks = make(map[string]*sync.Mutex)
 	self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
 	if e != nil { return e }
-	self.Watch()
+	Watch(self)
 	return nil
 }
 
-func (self *ServerCoordinator) Watch() error {
+func Watch(self *ServerCoordinator) error {
 	for {
 		_, watch, e := self.kc.AliveWatch()
 		if e != nil { return e }
@@ -139,6 +143,9 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 	// if this is the primary do renaming
 	// else forward task
 	if self.Addr == kmeta.Primary.Addr {
+
+		Lock(self, input.Old)
+		Lock(self, input.New)
 		// rename in backups
 		for _, replica:= range kmeta.Replicas {
 			fmt.Printf("asking %v to rename file: %v to %v\n", replica.Addr, input.Old, input.New)
@@ -178,6 +185,10 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 			fmt.Println("mv error", e)
 			panic(e)
 		}
+
+		Unlock(self, input.Old)
+		Unlock(self, input.New)
+
 	} else {
 		err := self.servercoords[kmeta.Primary.Addr].Rename(input, output)
 		if err != nil || output.Status != fuse.OK {
@@ -253,7 +264,10 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 	fmt.Println("Unlink: "+input.Name)
 	kmeta, e := self.kc.Get(input.Name)
 	if e != nil { return e }
+
 	if self.Addr == kmeta.Primary.Addr {
+		Lock(self, input.Name)
+
 		e = self.kc.Remove(input.Name, kmeta)
 		if e != nil {
 			panic(e)
@@ -269,6 +283,8 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 			}
 			self.kc.RemoveServerMeta(input.Name, replica.Addr, true)
 		}
+
+		Unlock(self, input.Name)
 	} else {
 		client := self.servercoords[kmeta.Primary.Addr]
 		e = client.Unlink(input, output)
@@ -286,6 +302,7 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 	kmeta, e := self.kc.Get(input.Path)
 	if e.Error() == "Deleted boolean" {
 		if self.Addr == kmeta.Primary.Addr {
+			Lock(self, input.Path)
 
 			self.sfs.Create(input, output)
 			_, e := self.kc.Create(input.Path, *output.Attr, kmeta.Deleted)
@@ -302,21 +319,22 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 				}
 			}
 
+			Unlock(self, input.Path)
 		} else {
 			client := self.servercoords[kmeta.Primary.Addr]
-
-			fmt.Println(self.servercoords, kmeta)
 			e = client.Create(input, output)
 			if e != nil {
 				panic(e)
 			}
 		}
 	} else {
+		Lock(self, input.Path)
 		self.sfs.Create(input, output)
 		_, e := self.kc.Create(input.Path, *output.Attr, false)
 		if e != nil {
 			return e
 		}
+		Unlock(self, input.Path)
 	}
 
 	return nil
@@ -330,6 +348,7 @@ func (self *ServerCoordinator) FileRead(input *FileRead_input, output *FileRead_
 }
 
 func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWrite_output) error {
+
 	fmt.Println("Write -", "Path:", input.Path, "Data:", input.Data)
 
 	kmeta, e := self.kc.Get(input.Path)
@@ -337,6 +356,8 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		return e
 	}
 	if self.Addr == kmeta.Primary.Addr {
+		Lock(self, input.Path)
+
 		fmt.Println("Is the primary, path:",input.Path,"offset:",input.Off)
 		self.sfs.FileWrite(input, output)
 
@@ -357,6 +378,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 			return e
 		}
 
+		Unlock(self, input.Path)
 	} else {
 		fmt.Println("Not primary, forwarding request to primary coordinator")
 		client := self.servercoords[kmeta.Primary.Addr]
@@ -383,6 +405,18 @@ func (self *ServerCoordinator) FileRelease(input *FileRelease_input, output *Fil
 	self.openFiles = append(self.openFiles[:input.FileId], self.openFiles[input.FileId+1:])
 	*/
 	return nil
+}
+
+func Lock (self *ServerCoordinator, file string) {
+	_ , ok := self.fileLocks[file]
+	if !ok {
+		self.fileLocks[file] = &sync.Mutex{}
+	}
+	self.fileLocks[file].Lock()
+}
+
+func Unlock (self *ServerCoordinator, file string) {
+	self.fileLocks[file].Unlock()
 }
 
 // assert that ServerCoordinator implements BackendFs
