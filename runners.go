@@ -16,6 +16,17 @@ import (
     "net/http"
     "io/ioutil"
     "strings"
+
+    "fmt"
+    // "time"
+    "strconv"
+    // "os"
+    "os/exec"
+    // "log"
+    "bytes"
+    // "proj"
+    "github.com/hanwen/go-fuse/fuse"
+
 )
 
 type fsfront struct {
@@ -117,3 +128,106 @@ func (self *fsserver) Run() {
         log.Fatal(e)
     }
 }
+
+
+
+
+
+type tester struct {
+    pairs int
+    Coord []*ServerCoordinator
+}
+
+func NewTester(pairs int) *tester {
+    retval := &tester{}
+    retval.setupZK()
+
+    os.RemoveAll("data")
+    os.Mkdir("data", os.ModePerm)
+    
+    var coord []*ServerCoordinator
+    for j := 0; j<pairs; j++ {
+        coord = append(coord, retval.setupPair(j))
+    }
+    retval.Coord = coord
+
+    return retval
+}
+
+func (self *tester) Stop() {
+    fmt.Println()
+    cmd := exec.Command("zookeeper-3.4.12/bin/zkServer.sh", "stop")
+    var out bytes.Buffer
+    cmd.Stdout = &out
+    err := cmd.Run()
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf(out.String())
+
+    for j := 0; j<self.pairs; j++ {
+        self.stopPair(j)
+    }
+}
+
+func (self *tester) setupZK() {
+    os.RemoveAll("zkdata")
+    os.Remove("zookeeper.out")
+    os.Mkdir("zkdata", os.ModePerm)
+
+    cmd := exec.Command("zookeeper-3.4.12/bin/zkServer.sh", "start")
+    var out bytes.Buffer
+    cmd.Stdout = &out   
+    fmt.Println()
+    err := cmd.Run()
+    if err != nil {
+        log.Fatal(err)
+    }
+    log.Printf(out.String())
+}
+
+func (self *tester) setupPair(i int) *ServerCoordinator {
+
+    insert := strconv.Itoa(i)
+
+    sharepoint := "data/from" + insert
+    os.Mkdir(sharepoint, os.ModePerm)
+    coordaddr := "localhost:950" + insert
+    fsaddr := "localhost:960" + insert
+    fmt.Println()
+    retvalChannel := make(chan *ServerCoordinator)
+
+    fsserver := NewFsserver(sharepoint, coordaddr, fsaddr, retvalChannel)
+    go fsserver.Run()
+    retval := <- retvalChannel
+    time.Sleep(time.Second)
+
+    // backaddr := coordaddr
+    // mountpoint := "data/to" + insert
+    // os.Mkdir(mountpoint, os.ModePerm)
+    // fmt.Println()
+ //    go fsfront.Run(backaddr, mountpoint)
+ //    time.Sleep(time.Second)
+    return retval
+}
+
+func (self *tester) stopPair(i int) {
+    cmd := exec.Command("fusermount", "-u", "data/to"+strconv.Itoa(i))
+    var out bytes.Buffer
+    cmd.Stdout = &out   
+    cmd.Run()
+}
+
+func (self *tester) CreateFile(coord *ServerCoordinator, path string) {
+    input := &Create_input{Path: path}
+    output := &Create_output{}
+    e := coord.Create(input, output)
+    if e != nil || output.Status != fuse.OK {
+        panic(e)
+    }
+}
+
+
+
+
+
