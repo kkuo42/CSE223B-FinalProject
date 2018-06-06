@@ -3,7 +3,6 @@ package proj
 import (
 	// "log"
 	"fmt"
-	"sync"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
 )
@@ -16,7 +15,7 @@ type ServerCoordinator struct {
 	kc *KeeperClient
 	serverfsm map[string]*ClientFs
 	servercoords map[string]*ClientFs
-	fileLocks map[string]*sync.Mutex
+	fileLocks map[string]chan int
 	primary bool
 
 }
@@ -38,7 +37,7 @@ func (self *ServerCoordinator) Init() error {
 	if e != nil {
 		return e
 	}
-	self.fileLocks = make(map[string]*sync.Mutex)
+	self.fileLocks = make(map[string]chan int)
 	self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
 	if e != nil { return e }
 	Watch(self)
@@ -410,13 +409,13 @@ func (self *ServerCoordinator) FileRelease(input *FileRelease_input, output *Fil
 func Lock (self *ServerCoordinator, file string) {
 	_ , ok := self.fileLocks[file]
 	if !ok {
-		self.fileLocks[file] = &sync.Mutex{}
+		self.fileLocks[file] = make(chan int, 1)
 	}
-	self.fileLocks[file].Lock()
+	self.fileLocks[file]<-1
 }
 
 func Unlock (self *ServerCoordinator, file string) {
-	self.fileLocks[file].Unlock()
+	<-self.fileLocks[file]
 }
 
 // assert that ServerCoordinator implements BackendFs
