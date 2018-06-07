@@ -8,18 +8,19 @@ import (
 	"log"
 	"fmt"
 	"errors"
+	"strings"
 )
 
 type ServerMeta struct {
-    PrimaryFor map[string]string
-    ReplicaFor map[string]string
+	PrimaryFor map[string]string
+	ReplicaFor map[string]string
 }
 
 type ServerFileMeta struct {
 	CoordAddr string
-    SFSAddr string
-    WriteCount int
-    ReadCount int
+	SFSAddr string
+	WriteCount int
+	ReadCount int
 }
 
 // this struct is to maintain all information relative to the keeper
@@ -65,8 +66,8 @@ func (k *KeeperClient) Init() error {
 	_, _= k.client.Create("/data", []byte("data"), int32(0), zk.WorldACL(zk.PermAll))
 
 	if k.coordaddr != "" && k.fsaddr != "" {
-		_, err := k.client.Create("/alivecoord/"+k.coordaddr, []byte(k.coordaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
-		_, err = k.client.Create("/alivefs/"+k.fsaddr, []byte(k.fsaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
+		_, err := k.client.Create("/alivecoord/"+k.coordaddr+"_", []byte(k.coordaddr), SequentialEphemeral, zk.WorldACL(zk.PermAll))
+		_, err = k.client.Create("/alivefs/"+k.fsaddr+"_", []byte(k.fsaddr), SequentialEphemeral, zk.WorldACL(zk.PermAll))
 		empty := map[string]string{}
 		sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
 		d, e := json.Marshal(&sm)
@@ -149,7 +150,7 @@ func (k *KeeperClient) UpdateBackends() error {
 			}
 			serverfs = append(serverfs, c)
 			done <- true
-		}(addr)
+		}(strings.Split(addr, "_")[0])
 
 		go func(a string) {
 			c := NewClientFs(a)
@@ -159,7 +160,7 @@ func (k *KeeperClient) UpdateBackends() error {
 			}
 			servercoords = append(servercoords, c)
 			done <- true
-		}(coordbacks[i])
+		}(strings.Split(coordbacks[i], "_")[0])
 	}
 
 	for i := 0; i < len(fsbacks) + len(coordbacks); i++ {
@@ -178,8 +179,13 @@ func (k *KeeperClient) UpdateBackends() error {
 	return nil
 }
 
-func (k *KeeperClient) Get(path string) (KeeperMeta, error) {
-	data, _, e := k.client.Get("/data/" + path)
+func (k *KeeperClient) Get(path string) ([]byte, error) {
+	data, _, e := k.client.Get(path)
+	return data, e
+}
+
+func (k *KeeperClient) GetData(path string) (KeeperMeta, error) {
+	data, e := k.Get("/data/" + path)
 	if e != nil {
 		// do nothing for now, should crash
 		return KeeperMeta{}, e
@@ -208,6 +214,12 @@ func (k *KeeperClient) GetWatch(watch string) (<-chan zk.Event, error) {
     return w, e
 }
 
+func (k *KeeperClient) Children(path string) ([]string, error) {
+	children, _, e := k.client.Children(path)
+	if e != nil { return e }
+	return children, e
+}
+
 func (k *KeeperClient) GetChildren(path string) ([]string, error) {
 	// if in the root directory don't add /
 	inputstr := "/data"
@@ -215,12 +227,8 @@ func (k *KeeperClient) GetChildren(path string) ([]string, error) {
 		inputstr += "/"+path
 	}
 
+	return k.Children(inputstr)
 	files, _, e := k.client.Children(inputstr)
-	if e != nil {
-		return nil, e
-	}
-
-	return files, nil
 }
 
 func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, error) {
@@ -237,7 +245,7 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 		if path != "" {
 			p = path + "/" + f
 		}
-		fm, e := k.Get(p)
+		fm, e := k.GetData(p)
 		if e != nil {
 			log.Println("error here:", e)
 			return nil, e
@@ -250,7 +258,7 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 }
 
 func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string, error) {
-	data, _, e := k.client.Get("/data/" + path)
+	data, e := k.Get("/data/"+path)
 	var kmeta KeeperMeta
 	if e == nil {
 		e = json.Unmarshal(data, &kmeta)
@@ -332,7 +340,7 @@ func (k *KeeperClient) Remove(path string, data KeeperMeta) error {
 
 func (k *KeeperClient) RemoveDir(path string) error {
 	// recursively delete all children
-	kmeta, e := k.Get(path)
+	kmeta, e := k.GetData(path)
 	children, e := k.GetChildren(path)
 	if len(children) == 0 || e != nil {
 		// it is safe to delete this node
@@ -373,7 +381,7 @@ func (k *KeeperClient) IncAddr(path, addr string, kmeta KeeperMeta, read bool) e
 
 func (k *KeeperClient) Inc(path string, read bool) error {
 	// if this server is not the primary go increment in replica
-	kmeta, e := k.Get(path)
+	kmeta, e := k.GetData(path)
 	if e != nil { return e }
 	if k.coordaddr != kmeta.Primary.CoordAddr {
 		return k.IncAddr(path, k.fsaddr, kmeta, read)
@@ -384,7 +392,7 @@ func (k *KeeperClient) Inc(path string, read bool) error {
 
 // add a primary or a replica to a server's metadata
 func (k *KeeperClient) AddServerMeta(path, addr string, replica bool) error {
-    smeta, _, e := k.client.Get("/alivemeta/" + addr)
+    smeta, e := k.Get("/alivemeta/" + addr)
     if e != nil { return e}
 
     var sm ServerMeta
@@ -403,7 +411,7 @@ func (k *KeeperClient) AddServerMeta(path, addr string, replica bool) error {
 }
 
 func (k *KeeperClient) RemoveServerMeta(path, addr string, replica bool) error {
-    smeta, _, e := k.client.Get("/alivemeta/" + addr)
+    smeta, e := k.Get("/alivemeta/" + addr)
     if e != nil { return e }
 
     var sm ServerMeta

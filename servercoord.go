@@ -3,6 +3,9 @@ package proj
 import (
 	// "log"
 	"fmt"
+	"math"
+	"strings"
+	"strconv"
 	"encoding/gob"
 	"github.com/hanwen/go-fuse/fuse"
 )
@@ -16,8 +19,6 @@ type ServerCoordinator struct {
 	serverfsm map[string]*ClientFs
 	servercoords map[string]*ClientFs
 	fileLocks map[string]chan int
-	primary bool
-
 }
 
 func NewServerCoordinator(directory, coordaddr, sfsaddr string) *ServerCoordinator {
@@ -38,19 +39,57 @@ func (self *ServerCoordinator) Init() error {
 		return e
 	}
 	self.fileLocks = make(map[string]chan int)
-	self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+	//self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
 	if e != nil { return e }
-	Watch(self)
+	go self.Watch()
 	return nil
 }
 
-func Watch(self *ServerCoordinator) error {
+func getCoordLeader(backs []string) (minback string, e error) {
+	min := math.MaxInt64
+	for _, back := range backs {
+		split := strings.Split(back, "_")
+		seqnum, e := strconv.Atoi(split[1])
+		if e != nil {
+			return "", fmt.Errorf("Error converting string to int in getCoordLeader %v\n", e)
+		}
+		if seqnum < min {
+			minback = split[0]
+			min = seqnum
+		}
+	}
+	return minback, nil
+}
+
+func (self *ServerCoordinator) balanceFail(coordm, fsm map[string]*ClientFs, sm []string) error {
+	// find the nodes that no longer exist, remove from the maps, what's left is dead
+
+}
+
+func (self *ServerCoordinator) Watch() error {
 	for {
-		_, watch, e := self.kc.AliveWatch()
+		// prep if something is wrong
+		backs, watch, e := self.kc.AliveWatch()
 		if e != nil { return e }
-		// something changed so go update backend maps
+		oldalive, e := self.kc.Children("/alivemeta")
+		if e != nil { return e }
+
+		// set new coordinator
+		coordlead, e := getCoordLeader(backs)
+		if e != nil { return e }
+		fmt.Println("coordleader is:", coordlead)
+
+		// something has changed so get new maps
 		servercoords, serverfsm, e := self.kc.GetBackendMaps()
 		if e != nil { return e }
+
+		if coordlead == self.Addr {
+			// something has changed so we will attempt to rebalance if necessary
+			fmt.Println("coords fsm before", servercoords, serverfsm)
+			self.balanceFail(servercoords, serverfsm, oldalive)
+			fmt.Println("coords fsm after", servercoords, serverfsm)
+		}
+
 		// for now immediately update
 		self.servercoords = servercoords
 		self.serverfsm = serverfsm
@@ -68,7 +107,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 		// the file doesn't exist on the server
 		fmt.Println("file "+input.Name+" not currently on server")
 
-		kmeta, e := self.kc.Get(input.Name)
+		kmeta, e := self.kc.GetData(input.Name)
 		if e != nil {
 			panic(e)
 		}
@@ -121,7 +160,7 @@ func (self *ServerCoordinator) OpenDir(input *OpenDir_input, output *OpenDir_out
 func (self *ServerCoordinator) GetAttr(input *GetAttr_input, output *GetAttr_output) error {
 	fmt.Println("get attr:", input.Name)
 	// fetch the attr from zk
-	kmeta, e := self.kc.Get(input.Name)
+	kmeta, e := self.kc.GetData(input.Name)
 	if e != nil {
 		// do nothing
 		if e.Error() == "Deleted boolean" {
@@ -140,7 +179,7 @@ func (self *ServerCoordinator) Rename(input *Rename_input, output *Rename_output
 	fmt.Println("Rename:",input.Old,"to",input.New)
 
 	// get attributes of dir
-	kmeta, e := self.kc.Get(input.Old)
+	kmeta, e := self.kc.GetData(input.Old)
 	if e != nil {
 		panic(e)
 	}
@@ -225,7 +264,7 @@ func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) e
 	fmt.Println("remove dir:", input.Name)
 
 	// get attributes of dir
-	kmeta, e := self.kc.Get(input.Name)
+	kmeta, e := self.kc.GetData(input.Name)
 	if e != nil {
 		panic(e)
 	}
@@ -268,7 +307,7 @@ func (self *ServerCoordinator) Rmdir(input *Rmdir_input, output *Rmdir_output) e
 
 func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output) error {
 	fmt.Println("Unlink: "+input.Name)
-	kmeta, e := self.kc.Get(input.Name)
+	kmeta, e := self.kc.GetData(input.Name)
 	if e != nil { return e }
 
 	if self.Addr == kmeta.Primary.CoordAddr {
@@ -306,7 +345,7 @@ func (self *ServerCoordinator) Unlink(input *Unlink_input, output *Unlink_output
 func (self *ServerCoordinator) Create(input *Create_input, output *Create_output) error {
 	fmt.Println("Create:", input.Path)
 
-	kmeta, e := self.kc.Get(input.Path)
+	kmeta, e := self.kc.GetData(input.Path)
 	if e.Error() == "Deleted boolean" {
 		if self.Addr == kmeta.Primary.CoordAddr {
 			Lock(self, input.Path)
@@ -358,7 +397,7 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 
 	fmt.Println("Write -", "Path:", input.Path, "Data:", input.Data)
 
-	kmeta, e := self.kc.Get(input.Path)
+	kmeta, e := self.kc.GetData(input.Path)
 	if e != nil {
 		return e
 	}
@@ -437,6 +476,7 @@ func (self *ServerCoordinator) AddPathBackup(path, newCoordAddr string) error {
 	input := &Open_input{Name: path}
 	output := &Open_output{}
 	e := self.servercoords[newCoordAddr].Open(input, output)
+	// TODO need to add metadata I believe
 	if e != nil || output.Status != fuse.OK {
 		panic(e)
 	}
@@ -447,11 +487,10 @@ func (self *ServerCoordinator) AddPathBackup(path, newCoordAddr string) error {
 // can be called from any coord?
 func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string) error {
 	// get keeper data
-	kmeta, e := self.kc.Get(path)
+	kmeta, e := self.kc.GetData(path)
 	if e != nil {
 		panic(e)
 	}
-	
 	// check path is on backup
 	_, exists := kmeta.Replicas[backupSFSAddr]
 	if !exists {
@@ -461,13 +500,13 @@ func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string) erro
 	// remove backup
 	client := self.serverfsm[backupSFSAddr]
 	input := &Unlink_input{Name: path}
-	output := &Unlink_output{}	
+	output := &Unlink_output{}
 	e = client.Unlink(input, output)
 	if e != nil || output.Status != fuse.OK {
 		panic(e)
 	}
 	self.kc.RemoveServerMeta(input.Name, backupSFSAddr, true)
-		
+
 	// update keeper
 	delete(kmeta.Replicas, backupSFSAddr)
 	e = self.kc.Set(path, kmeta)
@@ -482,7 +521,7 @@ func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string) erro
 // should be called on new primary
 func (self *ServerCoordinator) SwapPathPrimary(path string, currentPrimaryDead bool) error {
 	// get keeper data
-	kmeta, e := self.kc.Get(path)
+	kmeta, e := self.kc.GetData(path)
 	if e != nil {
 		panic(e)
 	}
