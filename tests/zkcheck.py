@@ -66,7 +66,11 @@ server_check = {
 		"9502_rm1": {"PrimaryFor": {}, "ReplicaFor": {}},
 		"9600_rm1": {"PrimaryFor": {}, "ReplicaFor": {"bnew":"bnew"}},
 		"9601_rm1": {"PrimaryFor": {}, "ReplicaFor": {"anew":"anew"}},
-		"9602_rm1": {"PrimaryFor": {}, "ReplicaFor": {"bnew":"bnew", "anew":"anew"}}
+		"9602_rm1": {"PrimaryFor": {}, "ReplicaFor": {"bnew":"bnew", "anew":"anew"}},
+		"9500_f1": {"PrimaryFor": {"a":"a"}, "ReplicaFor": {}},
+		"9501_f1": {"PrimaryFor": {"b":"b", "c":"c"}, "ReplicaFor": {}},
+		"9600_f1": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "c":"c"}},
+		"9601_f1": {"PrimaryFor": {}, "ReplicaFor": {"a":"a"}}
 	       }
 
 op = sys.argv[1]

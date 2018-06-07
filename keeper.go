@@ -86,13 +86,10 @@ func (k *KeeperClient) Init() error {
 
 func (k *KeeperClient) Watch() {
     for {
-        backs, watch, e := k.AliveWatch()
+        _, watch, e := k.AliveWatch()
         if e != nil { panic(e) }
-        if len(backs) < len(k.serverfs) {
-            k.UpdateBackends()
-        } else if len(backs) > len(k.serverfs) {
-            k.UpdateBackends()
-        }
+	// always keep backs up to date in keeper
+	k.UpdateBackends()
         <-watch
     }
 }
@@ -123,6 +120,7 @@ func (k *KeeperClient) GetBackends() ([]*ClientFs, []*ClientFs, error) {
 }
 
 func (k *KeeperClient) UpdateBackends() error {
+	fmt.Println("updating backs")
 	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
 	if e != nil {
 		log.Fatalf("error getting alive nodes")
@@ -142,25 +140,22 @@ func (k *KeeperClient) UpdateBackends() error {
 	serverfs:= []*ClientFs{}
 
 	for i, addr := range fsbacks {
-		go func(a string) {
-			c := NewClientFs(a)
+		go func(coordaddr, fsaddr string) {
+			c := NewClientFs(fsaddr)
 			e := c.Connect()
 			if e != nil {
-				log.Println("keeper couldnt connect to backend", a)
+				log.Println("keeper couldnt connect to backend", fsaddr)
 			}
 			serverfs = append(serverfs, c)
 			done <- true
-		}(strings.Split(addr, "_")[0])
-
-		go func(a string) {
-			c := NewClientFs(a)
-			e := c.Connect()
+			c = NewClientFs(coordaddr)
+			e = c.Connect()
 			if e != nil {
-				log.Println("keeper couldnt connect to backend", a)
+				log.Println("keeper couldnt connect to backend", coordaddr)
 			}
 			servercoords = append(servercoords, c)
 			done <- true
-		}(strings.Split(coordbacks[i], "_")[0])
+		}(strings.Split(coordbacks[i], "_")[0], strings.Split(addr, "_")[0])
 	}
 
 	for i := 0; i < len(fsbacks) + len(coordbacks); i++ {
@@ -216,7 +211,7 @@ func (k *KeeperClient) GetWatch(watch string) (<-chan zk.Event, error) {
 
 func (k *KeeperClient) Children(path string) ([]string, error) {
 	children, _, e := k.client.Children(path)
-	if e != nil { return e }
+	if e != nil { return nil, e }
 	return children, e
 }
 
@@ -228,7 +223,6 @@ func (k *KeeperClient) GetChildren(path string) ([]string, error) {
 	}
 
 	return k.Children(inputstr)
-	files, _, e := k.client.Children(inputstr)
 }
 
 func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, error) {
