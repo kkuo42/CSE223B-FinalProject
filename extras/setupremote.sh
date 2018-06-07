@@ -10,14 +10,21 @@
 # This script will spawn zookeper on the first server specified.
 # It will then run fs-server on each of the specified servers.
 
-server0=cse223b_kjkuo@vm166.sysnet.ucsd.edu
-server1=cse223b_kjkuo@vm167.sysnet.ucsd.edu
-server2=cse223b_kjkuo@vm168.sysnet.ucsd.edu
-server3=cse223b_kjkuo@vm169.sysnet.ucsd.edu
-server4=cse223b_kjkuo@vm170.sysnet.ucsd.edu
-server5=cse223b_kjkuo@vm171.sysnet.ucsd.edu
-server6=cse223b_kjkuo@vm172.sysnet.ucsd.edu
-server7=cse223b_kjkuo@vm173.sysnet.ucsd.edu
+if [ "$#" -ne 1 ]; then
+    echo "Usage: setupremote.sh <username>"
+	exit 1
+fi
+
+username=$1
+
+server0=cse223b_${username}@vm166.sysnet.ucsd.edu
+server1=cse223b_${username}@vm167.sysnet.ucsd.edu
+server2=cse223b_${username}@vm168.sysnet.ucsd.edu
+server3=cse223b_${username}@vm169.sysnet.ucsd.edu
+server4=cse223b_${username}@vm170.sysnet.ucsd.edu
+server5=cse223b_${username}@vm171.sysnet.ucsd.edu
+server6=cse223b_${username}@vm172.sysnet.ucsd.edu
+server7=cse223b_${username}@vm173.sysnet.ucsd.edu
 
 ssh -q $server0 <<EOSHH
 cd gopath/src/proj
