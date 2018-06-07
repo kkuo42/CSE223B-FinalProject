@@ -14,7 +14,6 @@ import (
     "net/rpc"
     "net"
     "net/http"
-    "io/ioutil"
     "strings"
 
     "fmt"
@@ -79,23 +78,6 @@ func NewFsserver(sharepoint, coordaddr, fsaddr string, coord chan *ServerCoordin
     return &fsserver{sharepoint, coordaddr, fsaddr, coord}
 }
 
-
-func pubIP() string {
-    // query api to get public ip
-    url := "https://api.ipify.org?format=text"
-    r, e := http.Get(url)
-    if e != nil {
-        log.Fatalf("error getting public ip")
-        panic(e)
-    }
-    defer r.Body.Close()
-    ip, e := ioutil.ReadAll(r.Body)
-    if e != nil {
-        log.Fatalf("error getting public ip")
-        panic(e)
-    }
-    return string(ip)
-}
 
 func (self *fsserver) Run() {
     log.Printf("fs-server %v %v %v\n", self.sharepoint, self.coordaddr, self.fsaddr)
