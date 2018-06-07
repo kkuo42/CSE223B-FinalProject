@@ -318,6 +318,12 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 	return "", nil
 }
 
+func (k *KeeperClient) Delete(path string) error {
+	e := k.client.Delete(path, -1)
+	if e != nil { return e }
+	return nil
+}
+
 func (k *KeeperClient) Remove(path string, data KeeperMeta) error {
 	data.Deleted = true
 	// remove all of the servers that had this path

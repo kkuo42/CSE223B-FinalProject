@@ -122,6 +122,8 @@ func (self *ServerCoordinator) balanceFail(alivemeta []string) error {
 			fmt.Println("REMOVING", path)
 			self.RemovePathBackup(path, addr, true)
 		}
+		// remove dead node from alivemeta
+		self.kc.Delete("/alivemeta/"+addr)
 	}
 
 	return nil
