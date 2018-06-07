@@ -27,7 +27,13 @@ file_check = {"a_data_init": {"Primary": {"WriteCount": 1, "ReadCount": 1, "Coor
 				           "localhost:9600": {"WriteCount": 3, "ReadCount": 3, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}},
 	      "c_data_fw": {"Primary": {"WriteCount": 8, "ReadCount": 11, "CoordAddr": "localhost:9502", "SFSAddr": "localhost:9602"}, 
 			      "Replicas": {"localhost:9600": {"WriteCount": 10, "ReadCount": 50, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"},
-				           "localhost:9601": {"WriteCount": 1, "ReadCount": 3, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}}}
+				           "localhost:9601": {"WriteCount": 1, "ReadCount": 3, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}}},
+	      "a_data_fb": {"Primary": {"WriteCount": 1, "ReadCount": 1, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}, 
+			      "Replicas": {"localhost:9601": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}}},
+	      "b_data_fb": {"Primary": {"WriteCount": 1, "ReadCount": 1, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
+			      "Replicas": {"localhost:9600": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}},
+	      "c_data_fb": {"Primary": {"WriteCount": 2, "ReadCount": 0, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
+			      "Replicas": {"localhost:9600": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}}
 	     }
 
 server_check = {

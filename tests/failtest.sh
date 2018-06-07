@@ -19,12 +19,26 @@ echo "killing backend 2"
 kill $server2PID
 sleep 5
 
-# TODO ensure that client 2 still works fine
-# TODO ensure that metadata is moved properly/everything assigned
 assertZkMetaEqual get /alivemeta/localhost:9500 9500_f1
 assertZkMetaEqual get /alivemeta/localhost:9501 9501_f1
 assertZkMetaEqual get /alivemeta/localhost:9600 9600_f1
 assertZkMetaEqual get /alivemeta/localhost:9601 9601_f1
+
+assertExist data/from0/a
+assertExist data/from0/b
+assertExist data/from0/c
+assertExist data/from1/a
+assertExist data/from1/b
+assertExist data/from1/c
+
+assertZkMetaEqual get /data/a a_data_fb
+assertZkMetaEqual get /data/b b_data_fb
+assertZkMetaEqual get /data/c c_data_fb
+
+# ensure that client 2 still works fine
+echo -n "c2" > data/to2/c2
+assertExist data/from0/c2
+assertExist data/from1/c2
 
 stop_jobs
 pass_test

@@ -290,9 +290,11 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 					break
 				}
 			}
-			e := k.serverfs[index].GetAddress(&addr_type, &replicaCoordAddr)
-			if e != nil {
-				panic(e)
+			if index != -1 {
+				e := k.serverfs[index].GetAddress(&addr_type, &replicaCoordAddr)
+				if e != nil {
+					panic(e)
+				}
 			}
 			replicaAddrs[replicaAddr] = ServerFileMeta{replicaCoordAddr, replicaAddr, 0, 0}
 		}

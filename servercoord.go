@@ -69,7 +69,7 @@ func getCoordLeader(backs []string) (minback string, e error) {
 // randomly distributed
 // all
 // depending when last balanced
-func (self *ServerCoordinator) balance() {
+func (self *ServerCoordinator) balance() error {
 	// can edit time in config.go
 	fmt.Println("BALASHDFAHSF")
 	ticker := time.NewTicker(BalanceTime)
@@ -77,16 +77,31 @@ func (self *ServerCoordinator) balance() {
 		select {
 			case <- ticker.C:
 				fmt.Println("BALANCE HERE")
+				// TODO we will go and get all files in the directory tree
+				// probably easiest to query zk for all of the nodes primary
+				// metadata
+				alivemeta, e := self.kc.Children("/alivemeta")
+				if e != nil { return e }
+				for _, addr := range alivemeta {
+					var sm ServerMeta
+					metadata, e := self.kc.Get("/alivemeta/"+addr)
+					if e != nil { return e }
+					e = json.Unmarshal(metadata, &sm)
+					for _, path := range sm.PrimaryFor {
+						// swap for everything
+						self.SwapPathPrimary(path, false)
+					}
+				}
 		}
 	}
 }
 
-func (self *ServerCoordinator) balanceFail(coordm, fsm map[string]*ClientFs, alivemeta []string) error {
+func (self *ServerCoordinator) balanceFail(alivemeta []string) error {
 	// find the nodes that no longer exist
 	deadnodes := []string{}
 	for _, addr := range alivemeta {
-		_, okc := coordm[addr]
-		_, okf := fsm[addr]
+		_, okc := self.servercoords[addr]
+		_, okf := self.serverfsm[addr]
 		if !okc && !okf {
 			// if coordm and fsm dont have addr, then dead or just joined
 			deadnodes = append(deadnodes, addr)
@@ -104,6 +119,7 @@ func (self *ServerCoordinator) balanceFail(coordm, fsm map[string]*ClientFs, ali
 			self.SwapPathPrimary(path, true)
 		}
 		for _, path := range sm.ReplicaFor {
+			fmt.Println("REMOVING", path)
 			self.RemovePathBackup(path, addr, true)
 		}
 	}
@@ -118,7 +134,7 @@ func (self *ServerCoordinator) Watch() error {
 		if e != nil { return e }
 		// need to get maps before getting meta, so maps are never
 		// more up to date than alivemeta in the case of concurrent join
-		servercoords, serverfsm, e := self.kc.GetBackendMaps()
+		self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
 		if e != nil { return e }
 		oldalive, e := self.kc.Children("/alivemeta")
 		if e != nil { return e }
@@ -133,16 +149,13 @@ func (self *ServerCoordinator) Watch() error {
 
 		if coordlead == self.Addr {
 			// something has changed so we will attempt to rebalance if necessary
-			self.balanceFail(servercoords, serverfsm, oldalive)
+			self.balanceFail(oldalive)
 			if !self.runningbalance {
 				self.runningbalance = true
 				go self.balance()
 			}
 		}
 
-		// for now immediately update
-		self.servercoords = servercoords
-		self.serverfsm = serverfsm
 		<-watch
 	}
 }
@@ -182,7 +195,9 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			fmt.Println("file transferred over")
 			status := tmpout.Status
 
+			fmt.Println("KMETA HERE", kmeta)
 			kmeta.Replicas[self.SFSAddr] = ServerFileMeta{self.Addr, self.SFSAddr, 0, 0}
+			fmt.Println("KMETA HERE", kmeta)
 			e = self.kc.Set(input.Name, kmeta)
 			if e != nil {
 				panic(e)
@@ -462,12 +477,11 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 			client := self.serverfsm[replica.SFSAddr]
 			e = client.FileWrite(input, output)
 			if e != nil {
-				fmt.Println("File Write Problem", output.Status)
-				return e
+				return fmt.Errorf("File Write Error %v\n", e)
 			}
 		}
 
-		// increment on the correct addr TODO?
+		// increment on the correct addr
 		kmeta.Attr = *output.Attr
 		e = self.kc.IncAddr(input.Path, input.Faddr, kmeta, false)
 		if e != nil {
@@ -518,9 +532,9 @@ func Unlock (self *ServerCoordinator, file string) {
 // assert that ServerCoordinator implements BackendFs
 var _ BackendFs = new(ServerCoordinator)
 
-
-
-
+/* ----------------------------------------------------------------------------
+-----------------------Non BackendFs/ClientFs Functions------------------------
+-----------------------------------------------------------------------------*/
 
 func (self *ServerCoordinator) AddPathBackup(path, newCoordAddr string) error {
 	input := &Open_input{Name: path}
@@ -564,7 +578,14 @@ func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string, curr
 
 	// update keeper
 	delete(kmeta.Replicas, backupSFSAddr)
+	e = self.kc.Set(path, kmeta)
+	if e != nil {
+		panic(e)
+	}
+
+	// if no replicas we need to assign one
 	if len(kmeta.Replicas) == 0 {
+		fmt.Println(path, "has no backups!!!!!")
 		// pick a new replica and add metadata to both the server meta and file meta
 		var replica *ClientFs
 		for addr, client := range(self.servercoords) {
@@ -577,14 +598,8 @@ func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string, curr
 			// we have picked a replica so add metadata
 			fmt.Println("picked replica", replica)
 			self.AddPathBackup(path, replica.Addr)
-			//self.kc.AddServerMeta(path, replicaAddr, true)
 		}
 	}
-	e = self.kc.Set(path, kmeta)
-	if e != nil {
-		panic(e)
-	}
-
 	return nil
 
 }
