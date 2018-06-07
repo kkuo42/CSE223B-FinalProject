@@ -13,17 +13,17 @@ func main() {
 
 	tester.CreateFile(0, filename)
 	tester.AssertFileExists(tester.Coord[0].Path + "/" + filename)
-	
+
 	tester.Coord[0].AddPathBackup(filename, tester.Coord[2].Addr)
 	tester.AssertFileExists(tester.Coord[2].Path + "/" + filename)
 
-	tester.Coord[0].RemovePathBackup(filename, tester.Coord[2].SFSAddr)
+	tester.Coord[0].RemovePathBackup(filename, tester.Coord[2].SFSAddr, false)
 	tester.AssertFileNotExists(tester.Coord[2].Path + "/" + filename)
 
 
 	tester.Coord[0].AddPathBackup(filename, tester.Coord[2].Addr)
 	tester.Coord[2].SwapPathPrimary(filename, false)
-	tester.Coord[2].RemovePathBackup(filename, tester.Coord[0].SFSAddr)	
+	tester.Coord[2].RemovePathBackup(filename, tester.Coord[0].SFSAddr, false)
 	tester.AssertFileExists(tester.Coord[2].Path + "/" + filename)
 	tester.AssertFileNotExists(tester.Coord[0].Path + "/" + filename)
 

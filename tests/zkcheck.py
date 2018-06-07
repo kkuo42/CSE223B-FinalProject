@@ -27,7 +27,13 @@ file_check = {"a_data_init": {"Primary": {"WriteCount": 1, "ReadCount": 1, "Coor
 				           "localhost:9600": {"WriteCount": 3, "ReadCount": 3, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}},
 	      "c_data_fw": {"Primary": {"WriteCount": 8, "ReadCount": 11, "CoordAddr": "localhost:9502", "SFSAddr": "localhost:9602"}, 
 			      "Replicas": {"localhost:9600": {"WriteCount": 10, "ReadCount": 50, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"},
-				           "localhost:9601": {"WriteCount": 1, "ReadCount": 3, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}}}
+				           "localhost:9601": {"WriteCount": 1, "ReadCount": 3, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}}},
+	      "a_data_fb": {"Primary": {"WriteCount": 1, "ReadCount": 1, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}, 
+			      "Replicas": {"localhost:9601": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}}},
+	      "b_data_fb": {"Primary": {"WriteCount": 1, "ReadCount": 1, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
+			      "Replicas": {"localhost:9600": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}},
+	      "c_data_fb": {"Primary": {"WriteCount": 2, "ReadCount": 0, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
+			      "Replicas": {"localhost:9600": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}}
 	     }
 
 server_check = {
@@ -66,7 +72,11 @@ server_check = {
 		"9502_rm1": {"PrimaryFor": {}, "ReplicaFor": {}},
 		"9600_rm1": {"PrimaryFor": {}, "ReplicaFor": {"bnew":"bnew"}},
 		"9601_rm1": {"PrimaryFor": {}, "ReplicaFor": {"anew":"anew"}},
-		"9602_rm1": {"PrimaryFor": {}, "ReplicaFor": {"bnew":"bnew", "anew":"anew"}}
+		"9602_rm1": {"PrimaryFor": {}, "ReplicaFor": {"bnew":"bnew", "anew":"anew"}},
+		"9500_f1": {"PrimaryFor": {"a":"a"}, "ReplicaFor": {}},
+		"9501_f1": {"PrimaryFor": {"b":"b", "c":"c"}, "ReplicaFor": {}},
+		"9600_f1": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "c":"c"}},
+		"9601_f1": {"PrimaryFor": {}, "ReplicaFor": {"a":"a"}}
 	       }
 
 op = sys.argv[1]

@@ -104,7 +104,7 @@ func (self *ServerFS) Create(input *Create_input, output *Create_output) error {
 	//delete(self.openFlags, input.Path)
 	// before creating the file we need to ensure the path is good to go
 	e := self.checkAndCreatePath(input.Path, input.Context)
-	if e != nil { panic(e) }
+	if e != nil { return e }
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
 	output.Attr, _ = self.fs.GetAttr(input.Path, input.Context)
 	self.openFiles[input.Path] = loopbackFile
@@ -128,7 +128,7 @@ func (self *ServerFS) FileWrite(input *FileWrite_input, output *FileWrite_output
 		fi := Create_input{input.Path, input.Flags, 0755, input.Context}
 		fo := Create_output{}
 		e := self.Create(&fi, &fo)
-		if e != nil { panic(e) }
+		if e != nil { return fmt.Errorf("File Write problem: %v\n", e) }
 	}
 	output.Written, output.Status = self.openFiles[input.Path].Write(input.Data, input.Off)
 	output.Attr, _ = self.fs.GetAttr(input.Path, input.Context)
