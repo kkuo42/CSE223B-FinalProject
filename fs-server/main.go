@@ -29,7 +29,7 @@ func main() {
     // parse args
     flag.Parse()
 	argc := len(flag.Args())
-    if argc != 1 || argc != 3 {
+    if argc != 1 && argc != 3 {
         log.Fatal("Usage:\n  fs-server <SHAREPOINT> <optional COORD ADDR> <optional SERVERFS ADDR>")
     }
 	var coordaddr string
