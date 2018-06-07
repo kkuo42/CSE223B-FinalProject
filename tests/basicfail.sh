@@ -13,6 +13,9 @@ echo "have to1 issue more writes to c so it gets it"
 echo "1" >> data/to1/c
 echo "1" >> data/to1/c
 
+# before killing make sure alivemeta has all nodes
+assertZkMetaEqual ls /alivemeta alive_b1
+
 echo "sleeping before killing"
 sleep 2
 echo "killing backend 2"
@@ -34,6 +37,9 @@ assertExist data/from1/c
 assertZkMetaEqual get /data/a a_data_fb
 assertZkMetaEqual get /data/b b_data_fb
 assertZkMetaEqual get /data/c c_data_fb
+
+# check that alivemeta no longer has the old nodes
+assertZkMetaEqual ls /alivemeta alive_a1
 
 # ensure that client 2 still works fine
 echo -n "c2" > data/to2/c2

@@ -104,7 +104,10 @@ func (self *ServerFS) Create(input *Create_input, output *Create_output) error {
 	//delete(self.openFlags, input.Path)
 	// before creating the file we need to ensure the path is good to go
 	e := self.checkAndCreatePath(input.Path, input.Context)
-	if e != nil { return e }
+	if e != nil {
+		fmt.Println("error creating on fs", e)
+		return e
+	}
 	loopbackFile, status := self.fs.Create(input.Path, input.Flags, input.Mode, input.Context)
 	output.Attr, _ = self.fs.GetAttr(input.Path, input.Context)
 	self.openFiles[input.Path] = loopbackFile
