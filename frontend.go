@@ -239,7 +239,7 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
 	e := self.Backend.FileRead(input, output)
 	if e != nil {
-		// log.Fatalf("backend faild to read file: %v\n", e)
+		log.Fatalf("backend faild to read file: %v\n", e)
 		return nil, fuse.EIO
 	}
 	return output.ReadResult, output.Status

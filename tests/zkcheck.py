@@ -33,7 +33,13 @@ file_check = {"a_data_init": {"Primary": {"WriteCount": 1, "ReadCount": 1, "Coor
 	      "b_data_fb": {"Primary": {"WriteCount": 1, "ReadCount": 1, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
 			      "Replicas": {"localhost:9600": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}},
 	      "c_data_fb": {"Primary": {"WriteCount": 2, "ReadCount": 0, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
-			      "Replicas": {"localhost:9600": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}}
+			      "Replicas": {"localhost:9600": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9500", "SFSAddr": "localhost:9600"}}},
+	      "a_data_fp": {"Primary": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
+			      "Replicas": {"localhost:9602": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9502", "SFSAddr": "localhost:9602"}}},
+	      "b_data_fp": {"Primary": {"WriteCount": 1, "ReadCount": 1, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}, 
+			      "Replicas": {"localhost:9602": {"WriteCount": 0, "ReadCount": 0, "CoordAddr": "localhost:9502", "SFSAddr": "localhost:9602"}}},
+	      "c_data_fp": {"Primary": {"WriteCount": 1, "ReadCount": 1, "CoordAddr": "localhost:9502", "SFSAddr": "localhost:9602"}, 
+			      "Replicas": {"localhost:9601": {"WriteCount": 2, "ReadCount": 0, "CoordAddr": "localhost:9501", "SFSAddr": "localhost:9601"}}}
 	     }
 
 server_check = {
@@ -76,8 +82,24 @@ server_check = {
 		"9500_f1": {"PrimaryFor": {"a":"a"}, "ReplicaFor": {}},
 		"9501_f1": {"PrimaryFor": {"b":"b", "c":"c"}, "ReplicaFor": {}},
 		"9600_f1": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "c":"c"}},
-		"9601_f1": {"PrimaryFor": {}, "ReplicaFor": {"a":"a"}}
+		"9601_f1": {"PrimaryFor": {}, "ReplicaFor": {"a":"a"}},
+		"9501_f2": {"PrimaryFor": {"b":"b", "a":"a"}, "ReplicaFor": {}},
+		"9502_f2": {"PrimaryFor": {"c":"c"}, "ReplicaFor": {}},
+		"9601_f2": {"PrimaryFor": {}, "ReplicaFor": {"c":"c"}},
+		"9602_f2": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a"}},
+		"9501_f3": {"PrimaryFor": {"b":"b", "a":"a", "c":"c", "c2":"c2"}, "ReplicaFor": {}},
+		"9502_f3": {"PrimaryFor": {"c3":"c3"}, "ReplicaFor": {}},
+		"9601_f3": {"PrimaryFor": {}, "ReplicaFor": {"c3":"c3"}},
+		"9602_f3": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a", "c":"c", "c2":"c2"}}
 	       }
+
+alive_check = {
+		"alive_b1": ["localhost:9500", "localhost:9501", "localhost:9502", "localhost:9600","localhost:9601","localhost:9602"],
+		"alive_a1": ["localhost:9500", "localhost:9501", "localhost:9600", "localhost:9601"],
+		"alive_a2": ["localhost:9501", "localhost:9502", "localhost:9601", "localhost:9602"]
+
+
+		}
 
 op = sys.argv[1]
 path = sys.argv[2]
@@ -85,10 +107,11 @@ check = sys.argv[3]
 
 FNULL = open(os.devnull, 'w')
 out = check_output(['zkcli',op,path,check], stderr=FNULL)
-data = json.loads(out)
+if op != "ls":
+	data = json.loads(out)
 
 # handle different types of data
-if "data" in path:
+if "data" in path and "get" in op:
 	# we will be checking the json 
 	if data["Primary"] == file_check[check]["Primary"] and data["Replicas"] == file_check[check]["Replicas"]:
 		print "pass"
@@ -96,11 +119,23 @@ if "data" in path:
 		print "zkdata:", data["Primary"], data["Replicas"]
 		print "checkdata:", file_check[check]
 		print "fail"
-elif "alivemeta" in path:
-	print data
+elif "alivemeta" in path and "get" in op:
 	if data == server_check[check]:
+		print "zkdata:", data
+		print "checkdata:", server_check[check]
 		print "pass"
 	else:
 		print "zkdata:", data
 		print "checkdata:", server_check[check]
+		print "fail"
+elif "alivemeta" in path and "ls" in op:
+	data = []
+	for l in out.split("\n"):
+		if l != "":
+			data.append(l)
+	if set(data) == set(alive_check[check]):
+		print "pass"
+	else:
+		print "zkdata:", data
+		print "checkdata:", alive_check[check]
 		print "fail"

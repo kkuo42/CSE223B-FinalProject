@@ -71,13 +71,12 @@ func getCoordLeader(backs []string) (minback string, e error) {
 // depending when last balanced
 func (self *ServerCoordinator) balance() error {
 	// can edit time in config.go
-	fmt.Println("BALASHDFAHSF")
 	ticker := time.NewTicker(BalanceTime)
 	for {
 		select {
 			case <- ticker.C:
 				fmt.Println("BALANCE HERE")
-				// TODO we will go and get all files in the directory tree
+				// we will go and get all files in the directory tree
 				// probably easiest to query zk for all of the nodes primary
 				// metadata
 				alivemeta, e := self.kc.Children("/alivemeta")
@@ -119,7 +118,6 @@ func (self *ServerCoordinator) balanceFail(alivemeta []string) error {
 			self.SwapPathPrimary(path, true)
 		}
 		for _, path := range sm.ReplicaFor {
-			fmt.Println("REMOVING", path)
 			self.RemovePathBackup(path, addr, true)
 		}
 		// remove dead node from alivemeta
@@ -177,6 +175,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			panic(e)
 		}
 
+		fmt.Println("kmeta coordaddr", kmeta.Primary.CoordAddr)
 		client := self.servercoords[kmeta.Primary.CoordAddr]
 		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context, Addr: self.SFSAddr}
 
@@ -197,9 +196,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 			fmt.Println("file transferred over")
 			status := tmpout.Status
 
-			fmt.Println("KMETA HERE", kmeta)
 			kmeta.Replicas[self.SFSAddr] = ServerFileMeta{self.Addr, self.SFSAddr, 0, 0}
-			fmt.Println("KMETA HERE", kmeta)
 			e = self.kc.Set(input.Name, kmeta)
 			if e != nil {
 				panic(e)
@@ -589,17 +586,17 @@ func (self *ServerCoordinator) RemovePathBackup(path, backupSFSAddr string, curr
 	if len(kmeta.Replicas) == 0 {
 		fmt.Println(path, "has no backups!!!!!")
 		// pick a new replica and add metadata to both the server meta and file meta
-		var replica *ClientFs
-		for addr, client := range(self.servercoords) {
+		replica := ""
+		for addr, _ := range(self.servercoords) {
 			// if the primary is not this address then assign it the replica
 			if kmeta.Primary.CoordAddr != addr {
-				replica = client
+				replica = addr
 			}
 		}
-		if replica != nil {
+		if replica != "" {
 			// we have picked a replica so add metadata
 			fmt.Println("picked replica", replica)
-			self.AddPathBackup(path, replica.Addr)
+			self.AddPathBackup(path, replica)
 		}
 	}
 	return nil
@@ -618,13 +615,21 @@ func (self *ServerCoordinator) SwapPathPrimary(path string, currentPrimaryDead b
 	var newPrimary ServerFileMeta
 	maxWrite := -1
 	for _, replica := range kmeta.Replicas {
-		if replica.WriteCount > maxWrite {
-			maxWrite = replica.WriteCount
-			newPrimary = replica
+		if currentPrimaryDead {
+			if replica.WriteCount > maxWrite {
+				maxWrite = replica.WriteCount
+				newPrimary = replica
+			}
+		} else {
+			if replica.WriteCount > maxWrite && replica.WriteCount > kmeta.Primary.WriteCount {
+				maxWrite = replica.WriteCount
+				newPrimary = replica
+			}
 		}
 	}
 	if (maxWrite < 0) {
-		fmt.Printf("failed to find replacement primary")
+		// failed to find replacement keep this one
+		return nil
 	}
 	// perform swap
 	if !currentPrimaryDead {
@@ -645,6 +650,23 @@ func (self *ServerCoordinator) SwapPathPrimary(path string, currentPrimaryDead b
 		panic(e)
 	}
 
+	if len(kmeta.Replicas) == 0 {
+		// need to assign a new replica for this
+		fmt.Println(path, "has no backups!!!!!")
+		// pick a new replica and add metadata to both the server meta and file meta
+		replica := ""
+		for addr, _ := range(self.servercoords) {
+			// if the primary is not this address then assign it the replica
+			if kmeta.Primary.CoordAddr != addr {
+				replica = addr
+			}
+		}
+		if replica != "" {
+			// we have picked a replica so add metadata
+			self.AddPathBackup(path, replica)
+		}
+	}
+
 	return nil
 }
 
@@ -656,4 +678,3 @@ func (self *ServerCoordinator) GetAddress(input *string, output *string) error {
 	}
 	return nil
 }
-

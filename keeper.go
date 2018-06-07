@@ -270,7 +270,12 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 	    replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
 
 		if Debug {
-			replicaAddr = ReplicaAddrs[k.fsaddr]
+			for _, replica := range k.serverfs {
+				if ReplicaAddrs[k.fsaddr] == replica.Addr {
+					// safe to assign
+					replicaAddr = ReplicaAddrs[k.fsaddr]
+				}
+			}
 		}
 
 	    // brand new file, initialize new file metadata
