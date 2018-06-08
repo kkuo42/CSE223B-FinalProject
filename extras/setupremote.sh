@@ -62,15 +62,16 @@ cd gopath/src/proj
 rm -rf zkdata zookeeper.out
 mkdir zkdata
 zookeeper-3.4.12/bin/zkServer.sh start
+rm -rf data logs
+mkdir data logs
 EOSHH
 
 for hostname in $server0 $server1 $server2 $server3 $server4 $server5 $server6 $server7; do
 ssh -q $hostname <<EOSHH
 cd gopath/src/proj
-rm -rf from$hostname
-mkdir from$hostname
-rm $hostname.txt
-fs-server from$hostname >> $hostname.txt & serverPID=\$!
+mkdir data/from$hostname
+rm -f logs/$hostname.txt
+fs-server data/from$hostname >> logs/$hostname.txt & serverPID=\$!
 sleep 1
 echo
 if !( ps -p \$serverPID > /dev/null ) then 
