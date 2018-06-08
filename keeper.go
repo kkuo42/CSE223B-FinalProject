@@ -129,43 +129,38 @@ func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, error) {
 		log.Fatalf("error getting alive nodes")
 		return nil, e
 	}
+	fmt.Println("coordbacks:", coordbacks)
 
 	// Designate random delay for coordinators
 	for _, addr := range coordbacks {
 		_, ok := k.latencyMap[addr]
 		if !ok {
-			k.latencyMap[addr] = rand.Intn(50)
+			k.latencyMap[addr] = rand.Intn(60)
 		}
 	}
 
-	done := make(chan bool)
-	servercoords := []*ClientFs{}
-
-	for i := range servercoords {
+	done := make(chan *ClientFs)
+	fmt.Println("Before for loop of go functions")
+	for i := range coordbacks {
 		go func(coordaddr string) {
 			c := NewClientFs(coordaddr)
 			e := c.Connect()
 			if e != nil {
-				log.Println("kc couldnt connect to coordinator", coordaddr)
+				fmt.Println("kc couldnt connect to coordinator", coordaddr)
+				return
 			}
 			time.Sleep(time.Millisecond * time.Duration(k.latencyMap[coordaddr]))
-			servercoords = append(servercoords, c)
-			done <- true
+			fmt.Println("kc connected (after fake latency of", k.latencyMap[coordaddr],") to coordinator", coordaddr)
+			done <- c
 		}(strings.Split(coordbacks[i], "_")[0])
 	}
 
-	go func() {
-		time.Sleep(time.Second * 5)
-		done <- true
-	} ()
+	fmt.Println("After for loop of go functions")
 
-	<-done
+	result := <-done
 
-	if len(servercoords) == 0 {
-		return nil, errors.New("could not connect to any backend within 5 seconds")
-	}
-
-	return servercoords[0], nil
+	fmt.Println("end of getBackendForFrontend, server:", result)
+	return result, nil
 }
 
 func (k *KeeperClient) UpdateBackends() error {
