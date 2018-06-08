@@ -75,7 +75,7 @@ func (self *ServerCoordinator) balance() error {
 	for {
 		select {
 			case <- ticker.C:
-				fmt.Println("BALANCE HERE")
+				fmt.Println("Balancing....")
 				// we will go and get all files in the directory tree
 				// probably easiest to query zk for all of the nodes primary
 				// metadata
@@ -91,11 +91,13 @@ func (self *ServerCoordinator) balance() error {
 						self.SwapPathPrimary(path, false)
 					}
 				}
+				fmt.Println("Finished Balancing")
 		}
 	}
 }
 
 func (self *ServerCoordinator) balanceFail(alivemeta []string) error {
+	fmt.Println("balancing on failure")
 	// find the nodes that no longer exist
 	deadnodes := []string{}
 	for _, addr := range alivemeta {
@@ -536,6 +538,7 @@ var _ BackendFs = new(ServerCoordinator)
 -----------------------------------------------------------------------------*/
 
 func (self *ServerCoordinator) AddPathBackup(path, newCoordAddr string) error {
+	fmt.Println("Adding path to coord", path, newCoordAddr)
 	input := &Open_input{Name: path}
 	output := &Open_output{}
 	e := self.servercoords[newCoordAddr].Open(input, output)
