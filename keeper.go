@@ -240,7 +240,7 @@ func (k *KeeperClient) GetChildrenAttributes(path string) ([]fuse.DirEntry, erro
 			p = path + "/" + f
 		}
 		fm, e := k.GetData(p)
-		if e != nil {
+		if e != nil && e.Error() != "Deleted boolean"{
 			log.Println("error here:", e)
 			return nil, e
 		}

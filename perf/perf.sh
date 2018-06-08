@@ -14,10 +14,10 @@ output_prefix=$1
 
 
 # single
-iozone -R -l 1 -u 1 -r 4k -s 512 -i 0 -i 1 -b ${output_prefix}_1.wks -F ../data/to0/temp0
+iozone -R -l 1 -u 1 -r 4k -s 512 -i 0 -i 1 -b ${output_prefix}_1.wks -F ../data/to0/temp
 
 # 2
-iozone -R -l 2 -u 2 -r 4k -s 512 -i 0 -i 1 -b ${output_prefix}_2.wks -F ../data/to0/temp0 ../data/to1/temp1
+iozone -R -l 2 -u 2 -r 4k -s 512 -i 0 -i 1 -b ${output_prefix}_2.wks -F ../data/to0/temp ../data/to1/temp
 
 # 4
-iozone -R -l 4 -u 4 -r 4k -s 512 -i 0 -i 1 -b ${output_prefix}_4.wks -F ../data/to0/temp0 ../data/to1/temp1 ../data/to2/temp2 ../data/to3/temp3
+iozone -R -l 4 -u 4 -r 4k -s 512 -i 0 -i 1 -b ${output_prefix}_4.wks -F ../data/to0/temp ../data/to1/temp ../data/to2/temp ../data/to3/temp
