@@ -54,12 +54,10 @@ func (self *Frontend) WatchBacks() {
 }
 
 func (self *Frontend) RefreshClient() error {
-    backends, _, e := self.kc.GetBackends()
-    if e != nil { return e }
     if self.backpref != "" {
         // attempt to connect to preferred back
         back := NewClientFs(self.backpref)
-        e = back.Connect()
+        e := back.Connect()
         if e == nil {
             self.backendFs = back
             fmt.Println("pref connected to", back.Addr)
@@ -68,17 +66,15 @@ func (self *Frontend) RefreshClient() error {
         }
         fmt.Println("couldnt connect to prefered back")
     }
-    for _, back := range backends {
-        e = back.Connect()
-        if e == nil {
-            self.backendFs = back
-	    self.addr = back.Addr
-            fmt.Println("connected to", back.Addr)
-            return nil
-        }
-    }
-	fmt.Println("Didn't connect to any backend")
-    return e
+
+	back, e := self.kc.GetBackendForFrontend()
+    if e != nil { return e }
+
+    self.backendFs = back
+	self.addr = back.Addr
+    fmt.Println("connected to", back.Addr)
+
+    return nil
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
