@@ -7,6 +7,7 @@ import (
 	"time"
 	"log"
 	"fmt"
+	"math/rand"
 	"errors"
 	"strings"
 )
@@ -37,10 +38,11 @@ type KeeperClient struct {
 	client *zk.Conn
 	serverfs []*ClientFs
 	servercoords []*ClientFs
+	latencyMap map[string]int
 }
 
 func NewKeeperClient(coordaddr, fsaddr string) *KeeperClient {
-	return &KeeperClient{coordaddr: coordaddr, fsaddr: fsaddr}
+	return &KeeperClient{coordaddr: coordaddr, fsaddr: fsaddr, latencyMap: make(map[string]int)}
 }
 
 func (k *KeeperClient) Connect() error {
@@ -119,6 +121,53 @@ func (k *KeeperClient) GetBackends() ([]*ClientFs, []*ClientFs, error) {
 	return k.servercoords, k.serverfs, nil
 }
 
+// Used to get backends for frontend to connect to with artificial random latency added
+func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, error) {
+	fmt.Println("updating backs")
+	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
+	if e != nil {
+		log.Fatalf("error getting alive nodes")
+		return nil, e
+	}
+
+	// Designate random delay for coordinators
+	for _, addr := range coordbacks {
+		_, ok := k.latencyMap[addr]
+		if !ok {
+			k.latencyMap[addr] = rand.Intn(50)
+		}
+	}
+
+	done := make(chan bool)
+	servercoords := []*ClientFs{}
+
+	for i := range servercoords {
+		go func(coordaddr string) {
+			c := NewClientFs(coordaddr)
+			e := c.Connect()
+			if e != nil {
+				log.Println("kc couldnt connect to coordinator", coordaddr)
+			}
+			time.Sleep(time.Millisecond * time.Duration(k.latencyMap[coordaddr]))
+			servercoords = append(servercoords, c)
+			done <- true
+		}(strings.Split(coordbacks[i], "_")[0])
+	}
+
+	go func() {
+		time.Sleep(time.Second * 5)
+		done <- true
+	} ()
+
+	<-done
+
+	if len(servercoords) == 0 {
+		return nil, errors.New("could not connect to any backend within 5 seconds")
+	}
+
+	return servercoords[0], nil
+}
+
 func (k *KeeperClient) UpdateBackends() error {
 	fmt.Println("updating backs")
 	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
@@ -126,6 +175,7 @@ func (k *KeeperClient) UpdateBackends() error {
 		log.Fatalf("error getting alive nodes")
 		return e
 	}
+
 	fsbacks, _, _, e := k.client.ChildrenW("/alivefs")
 	if e != nil {
 		log.Fatalf("error getting alive nodes")
@@ -144,14 +194,14 @@ func (k *KeeperClient) UpdateBackends() error {
 			c := NewClientFs(fsaddr)
 			e := c.Connect()
 			if e != nil {
-				log.Println("keeper couldnt connect to backend", fsaddr)
+				log.Println("kc couldnt connect to serverfs", fsaddr)
 			}
 			serverfs = append(serverfs, c)
 			done <- true
 			c = NewClientFs(coordaddr)
 			e = c.Connect()
 			if e != nil {
-				log.Println("keeper couldnt connect to backend", coordaddr)
+				log.Println("kc couldnt connect to coordinator", coordaddr)
 			}
 			servercoords = append(servercoords, c)
 			done <- true
