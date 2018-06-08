@@ -475,10 +475,24 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 
 		for _, replica := range kmeta.Replicas {
 			fmt.Println("Write on replica:", replica.SFSAddr)
-			client := self.serverfsm[replica.SFSAddr]
-			e = client.FileWrite(input, output)
-			if e != nil {
-				return fmt.Errorf("File Write Error %v\n", e)
+			if client, ok := self.serverfsm[replica.SFSAddr]; ok {
+				e = client.FileWrite(input, output)
+				if e != nil {
+					fmt.Printf("File Write Error %v\n", e)
+					// continue?
+				}
+			} else {
+				// outdated clients so refresh
+				self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+				if client, ok := self.serverfsm[replica.SFSAddr]; ok {
+					e = client.FileWrite(input, output)
+					if e != nil {
+						fmt.Printf("File Write Error %v\n", e)
+						// continue?
+					}
+				} else {
+					return fmt.Errorf("Massive problem getting clients\n")
+				}
 			}
 		}
 
