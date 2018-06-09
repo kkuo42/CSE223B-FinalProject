@@ -74,24 +74,18 @@ func (self *Frontend) RefreshClient() error {
 		    if e != nil { return e }
 		    self.fsaddr = out
 		    return nil
-		}
-	}
-        fmt.Println("couldnt connect to prefered back")
     }
-    for _, back := range backends {
-        e = back.Connect()
-        if e == nil {
-            fmt.Println("connected to", back.Addr)
-            self.backendFs = back
-	    self.coordaddr = back.Addr
-	    e = back.GetAddress(&in, &out)
-	    if e != nil { return e }
-	    self.fsaddr = out
-            return nil
-        }
+  }
+  fmt.Println("couldnt connect to prefered back")
     }
-    fmt.Println("Didn't connect to any backend")
-    return e
+    back, e := self.kc.GetBackendForFrontend()
+    if e != nil { return e }
+    self.coordaddr = back.Addr
+		e = back.GetAddress(&in, &out)
+		if e != nil { return e }
+		self.fsaddr = out
+    fmt.Println("connected to", back.Addr)
+    return nil
 }
 
 func (self *Frontend) removeFailedNode() {

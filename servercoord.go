@@ -412,7 +412,9 @@ func (self *ServerCoordinator) Create(input *Create_input, output *Create_output
 	fmt.Println("Create:", input.Path)
 
 	kmeta, e := self.kc.GetData(input.Path)
-	if e.Error() == "Deleted boolean" {
+	if e == nil { // file already exists
+		// pass
+	} else if e.Error() == "Deleted boolean" {
 		if self.Addr == kmeta.Primary.CoordAddr {
 			Lock(self, input.Path)
 

@@ -4,3 +4,4 @@ logs
 *.out
 zkdata
 zookeeper-3.4.12
+*.wks
