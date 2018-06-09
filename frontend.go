@@ -41,7 +41,7 @@ func (self *Frontend) Init() {
     if e != nil { panic(e) }
 
 	// force initial refresh of server connections
-	//self.RefreshClient()
+	self.RefreshClient()
     go self.WatchBacks()
 }
 
