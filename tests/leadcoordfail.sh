@@ -50,10 +50,10 @@ echo -n "c3" > data/to2/c3
 echo "sleeping and will check for rebalance"
 sleep 30
 
-assertZkMetaEqual get /alivemeta/localhost:9501 9501_f3
-assertZkMetaEqual get /alivemeta/localhost:9502 9502_f3
-assertZkMetaEqual get /alivemeta/localhost:9601 9601_f3
-assertZkMetaEqual get /alivemeta/localhost:9602 9602_f3
+assertZkMetaEqual2 get /alivemeta/localhost:9501 9501_f3 9501_f32
+assertZkMetaEqual2 get /alivemeta/localhost:9502 9502_f3 9502_f32
+assertZkMetaEqual2 get /alivemeta/localhost:9601 9601_f3 9601_f32
+assertZkMetaEqual2 get /alivemeta/localhost:9602 9602_f3 9602_f32
 
 stop_jobs
 pass_test

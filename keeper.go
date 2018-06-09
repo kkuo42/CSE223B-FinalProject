@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"math/rand"
 	"errors"
-	"strings"
 )
 
 type ServerMeta struct {
@@ -69,7 +68,7 @@ func (k *KeeperClient) Init() error {
 
 	if k.coordaddr != "" && k.fsaddr != "" {
 		_, err := k.client.Create("/alivecoord/"+k.coordaddr+"_", []byte(k.coordaddr), SequentialEphemeral, zk.WorldACL(zk.PermAll))
-		_, err = k.client.Create("/alivefs/"+k.fsaddr+"_", []byte(k.fsaddr), SequentialEphemeral, zk.WorldACL(zk.PermAll))
+		_, err = k.client.Create("/alivefs/"+k.fsaddr, []byte(k.fsaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 		empty := map[string]string{}
 		sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
 		d, e := json.Marshal(&sm)
@@ -164,7 +163,7 @@ func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, error) {
 }
 
 func (k *KeeperClient) UpdateBackends() error {
-	fmt.Println("updating backs")
+	//fmt.Println("updating backs")
 	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
 	if e != nil {
 		log.Fatalf("error getting alive nodes")
@@ -185,7 +184,7 @@ func (k *KeeperClient) UpdateBackends() error {
 	serverfs:= []*ClientFs{}
 
 	for i, addr := range fsbacks {
-		go func(coordaddr, fsaddr string) {
+		go func(fsaddr string) {
 			c := NewClientFs(fsaddr)
 			e := c.Connect()
 			if e != nil {
@@ -193,14 +192,16 @@ func (k *KeeperClient) UpdateBackends() error {
 			}
 			serverfs = append(serverfs, c)
 			done <- true
-			c = NewClientFs(coordaddr)
-			e = c.Connect()
+		}(addr)
+		go func(coordaddr string) {
+			c := NewClientFs(coordaddr)
+			e := c.Connect()
 			if e != nil {
 				log.Println("kc couldnt connect to coordinator", coordaddr)
 			}
 			servercoords = append(servercoords, c)
 			done <- true
-		}(strings.Split(coordbacks[i], "_")[0], strings.Split(addr, "_")[0])
+		}(coordbacks[i])
 	}
 
 	for i := 0; i < len(fsbacks) + len(coordbacks); i++ {
@@ -310,9 +311,13 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 			return "", errors.New("value already exists in keeper, but isn't deleted")
 		}
 	} else {
-
 	    // pick a replica on the median
-	    replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
+		replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
+		if replicaAddr == k.fsaddr && len(k.serverfs) > 1 {
+			fmt.Println("PICKED SELF AS REPLICA")
+			// if you pick yourself and youre not the only node then pick a different node
+			replicaAddr = k.serverfs[len(k.serverfs)/2-1].Addr
+		}
 
 		if Debug {
 			for _, replica := range k.serverfs {

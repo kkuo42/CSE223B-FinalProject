@@ -75,7 +75,7 @@ func (self *ServerCoordinator) balance() error {
 	for {
 		select {
 			case <- ticker.C:
-				fmt.Println("BALANCE HERE")
+				fmt.Println("Balancing....")
 				// we will go and get all files in the directory tree
 				// probably easiest to query zk for all of the nodes primary
 				// metadata
@@ -91,11 +91,13 @@ func (self *ServerCoordinator) balance() error {
 						self.SwapPathPrimary(path, false)
 					}
 				}
+				fmt.Println("Finished Balancing")
 		}
 	}
 }
 
 func (self *ServerCoordinator) balanceFail(alivemeta []string) error {
+	fmt.Println("balancing on failure")
 	// find the nodes that no longer exist
 	deadnodes := []string{}
 	for _, addr := range alivemeta {
@@ -475,10 +477,24 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 
 		for _, replica := range kmeta.Replicas {
 			fmt.Println("Write on replica:", replica.SFSAddr)
-			client := self.serverfsm[replica.SFSAddr]
-			e = client.FileWrite(input, output)
-			if e != nil {
-				return fmt.Errorf("File Write Error %v\n", e)
+			if client, ok := self.serverfsm[replica.SFSAddr]; ok {
+				e = client.FileWrite(input, output)
+				if e != nil {
+					fmt.Printf("File Write Error %v\n", e)
+					// continue?
+				}
+			} else {
+				// outdated clients so refresh
+				self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+				if client, ok := self.serverfsm[replica.SFSAddr]; ok {
+					e = client.FileWrite(input, output)
+					if e != nil {
+						fmt.Printf("File Write Error %v\n", e)
+						// continue?
+					}
+				} else {
+					return fmt.Errorf("Massive problem getting clients\n")
+				}
 			}
 		}
 
@@ -492,13 +508,19 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		Unlock(self, input.Path)
 	} else {
 		fmt.Println("Not primary, forwarding request to primary coordinator")
-		client := self.servercoords[kmeta.Primary.CoordAddr]
-		input.Kmeta = kmeta
-		// tell to increment write on this server
-		input.Faddr = self.SFSAddr
-		e = client.FileWrite(input, output)
-		if e != nil {
-			return e
+		if _, ok := self.servercoords[kmeta.Primary.CoordAddr]; !ok {
+			self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+		}
+		if client, ok := self.servercoords[kmeta.Primary.CoordAddr]; ok {
+			input.Kmeta = kmeta
+			// tell to increment write on this server
+			input.Faddr = self.SFSAddr
+			e = client.FileWrite(input, output)
+			if e != nil {
+				return e
+			}
+		} else {
+			return fmt.Errorf("Error connecting to client")
 		}
 	}
 
@@ -538,6 +560,7 @@ var _ BackendFs = new(ServerCoordinator)
 -----------------------------------------------------------------------------*/
 
 func (self *ServerCoordinator) AddPathBackup(path, newCoordAddr string) error {
+	fmt.Println("Adding path to coord", path, newCoordAddr)
 	input := &Open_input{Name: path}
 	output := &Open_output{}
 	e := self.servercoords[newCoordAddr].Open(input, output)
