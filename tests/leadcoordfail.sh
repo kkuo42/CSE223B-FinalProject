@@ -48,7 +48,7 @@ assertExist data/from2/c2
 echo -n "c3" > data/to2/c3
 
 echo "sleeping and will check for rebalance"
-sleep 15
+sleep 30
 
 assertZkMetaEqual2 get /alivemeta/localhost:9501 9501_f3 9501_f32
 assertZkMetaEqual2 get /alivemeta/localhost:9502 9502_f3 9502_f32

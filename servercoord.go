@@ -506,13 +506,19 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		Unlock(self, input.Path)
 	} else {
 		fmt.Println("Not primary, forwarding request to primary coordinator")
-		client := self.servercoords[kmeta.Primary.CoordAddr]
-		input.Kmeta = kmeta
-		// tell to increment write on this server
-		input.Faddr = self.SFSAddr
-		e = client.FileWrite(input, output)
-		if e != nil {
-			return e
+		if _, ok := self.servercoords[kmeta.Primary.CoordAddr]; !ok {
+			self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+		}
+		if client, ok := self.servercoords[kmeta.Primary.CoordAddr]; ok {
+			input.Kmeta = kmeta
+			// tell to increment write on this server
+			input.Faddr = self.SFSAddr
+			e = client.FileWrite(input, output)
+			if e != nil {
+				return e
+			}
+		} else {
+			return fmt.Errorf("Error connecting to client")
 		}
 	}
 

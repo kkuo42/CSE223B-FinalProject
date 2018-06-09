@@ -96,7 +96,6 @@ server_check = {
 		"9601_f32": {"PrimaryFor": {}, "ReplicaFor": {"c3":"c3", "c2":"c2"}},
 		"9602_f32": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a", "c":"c"}},
 		"9500_ff1": {"PrimaryFor": {"a":"a", "c2":"c2"}, "ReplicaFor": {}},
-		"9500_ff1": {"PrimaryFor": {"a":"a", "c2":"c2"}, "ReplicaFor": {}},
 		"9501_ff1": {"PrimaryFor": {"b":"b", "c":"c"}, "ReplicaFor": {}},
 		"9600_ff1": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "c":"c"}},
 		"9601_ff1": {"PrimaryFor": {}, "ReplicaFor": {"a":"a", "c2":"c2"}},

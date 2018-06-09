@@ -119,7 +119,7 @@ func (k *KeeperClient) GetBackends() ([]*ClientFs, []*ClientFs, error) {
 }
 
 func (k *KeeperClient) UpdateBackends() error {
-	fmt.Println("updating backs")
+	//fmt.Println("updating backs")
 	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
 	if e != nil {
 		log.Fatalf("error getting alive nodes")
@@ -139,7 +139,7 @@ func (k *KeeperClient) UpdateBackends() error {
 	serverfs:= []*ClientFs{}
 
 	for i, addr := range fsbacks {
-		go func(coordaddr, fsaddr string) {
+		go func(fsaddr string) {
 			c := NewClientFs(fsaddr)
 			e := c.Connect()
 			if e != nil {
@@ -147,14 +147,16 @@ func (k *KeeperClient) UpdateBackends() error {
 			}
 			serverfs = append(serverfs, c)
 			done <- true
-			c = NewClientFs(coordaddr)
-			e = c.Connect()
+		}(addr)
+		go func(coordaddr string) {
+			c := NewClientFs(coordaddr)
+			e := c.Connect()
 			if e != nil {
 				log.Println("keeper couldnt connect to backend", coordaddr)
 			}
 			servercoords = append(servercoords, c)
 			done <- true
-		}(coordbacks[i], addr)
+		}(coordbacks[i])
 	}
 
 	for i := 0; i < len(fsbacks) + len(coordbacks); i++ {
@@ -264,13 +266,13 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 			return "", errors.New("value already exists in keeper, but isn't deleted")
 		}
 	} else {
-
 	    // pick a replica on the median
-	    replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
-	    if replicaAddr == k.coordaddr && len(k.serverfs) > 1 {
-		    // if you pick yourself and youre not the only node then pick a different node
-		    replicaAddr = k.serverfs[len(k.serverfs)/2-1].Addr
-	    }
+		replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
+		if replicaAddr == k.fsaddr && len(k.serverfs) > 1 {
+			fmt.Println("PICKED SELF AS REPLICA")
+			// if you pick yourself and youre not the only node then pick a different node
+			replicaAddr = k.serverfs[len(k.serverfs)/2-1].Addr
+		}
 
 		if Debug {
 			for _, replica := range k.serverfs {
