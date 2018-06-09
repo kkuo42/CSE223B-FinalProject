@@ -211,3 +211,22 @@ assertZkMetaEqual() {
 		exit 1
 	fi
 }
+
+assertZkMetaEqual2() {
+	OUT=`python2 tests/zkcheck.py $1 $2 $3 $4`
+	OUTPUT=`python2 tests/zkcheck.py $1 $2 $3 $4 | tail -1`
+	if [ "$OUTPUT" == "pass" ]; then
+		echo "PASSED assertZkMetaEqual. $1 $2 $3 $4"
+	else
+		echo "$OUT"
+		echo "FAILED assertZkMetaEqual. $1 $2 $3 $4"
+		echo "Exiting"
+		echo
+		stop_jobs
+		tail logs/*.txt
+		echo
+		echo "FAILED $testname"
+		echo
+		exit 1
+	fi
+}

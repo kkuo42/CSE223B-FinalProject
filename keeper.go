@@ -69,7 +69,7 @@ func (k *KeeperClient) Init() error {
 
 	if k.coordaddr != "" && k.fsaddr != "" {
 		_, err := k.client.Create("/alivecoord/"+k.coordaddr+"_", []byte(k.coordaddr), SequentialEphemeral, zk.WorldACL(zk.PermAll))
-		_, err = k.client.Create("/alivefs/"+k.fsaddr+"_", []byte(k.fsaddr), SequentialEphemeral, zk.WorldACL(zk.PermAll))
+		_, err = k.client.Create("/alivefs/"+k.fsaddr, []byte(k.fsaddr), zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 		empty := map[string]string{}
 		sm := ServerMeta{PrimaryFor: empty, ReplicaFor: empty}
 		d, e := json.Marshal(&sm)
@@ -127,7 +127,7 @@ type connectRes struct {
 }
 
 // Used to get backends for frontend to connect to with artificial random latency added
-func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, int, error) {
+func (k *KeeperClient) GetBackendForFrontend(pref string) (*ClientFs, int, error) {
 	fmt.Println("updating backs")
 	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
 	if e != nil {
@@ -143,20 +143,37 @@ func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, int, error) {
 		}
 	}
 
+	// if the coord has a preference assign it that server if possible
+	if pref != "" {
+		fmt.Println("SERVER HAS A PREF")
+		for _, addr := range coordbacks {
+			saddr := strings.Split(addr, "_")[0]
+			if pref == saddr {
+				c := NewClientFs(addr)
+				e := c.Connect()
+				if e != nil {
+					fmt.Println("kc couldnt connect to pref back", addr)
+				} else {
+					return c, k.latencyMap[addr], nil
+				}
+			}
+		}
+	}
+
 	done := make(chan connectRes)
-	for i := range coordbacks {
+	for _, addr := range coordbacks {
 
 		go func(coordaddr string) {
 			c := NewClientFs(coordaddr)
 			e := c.Connect()
 			if e != nil {
-				fmt.Println("kc couldnt connect to coordinator", coordaddr)
+				fmt.Println("kc couldnt connect to coordinator", c.Addr)
 				return
 			}
 			time.Sleep(time.Millisecond * time.Duration(k.latencyMap[coordaddr]))
 			fmt.Println("kc connected after fake latency of", k.latencyMap[coordaddr],"to coordinator", coordaddr)
 			done <- connectRes{c, k.latencyMap[coordaddr]}
-		}(strings.Split(coordbacks[i], "_")[0])
+		}(addr)
 	}
 
 	result := <-done
@@ -186,7 +203,7 @@ func (k *KeeperClient) UpdateBackends() error {
 	serverfs:= []*ClientFs{}
 
 	for i, addr := range fsbacks {
-		go func(coordaddr, fsaddr string) {
+		go func(fsaddr string) {
 			c := NewClientFs(fsaddr)
 			e := c.Connect()
 			if e != nil {
@@ -194,14 +211,16 @@ func (k *KeeperClient) UpdateBackends() error {
 			}
 			serverfs = append(serverfs, c)
 			done <- true
-			c = NewClientFs(coordaddr)
-			e = c.Connect()
+		}(addr)
+		go func(coordaddr string) {
+			c := NewClientFs(coordaddr)
+			e := c.Connect()
 			if e != nil {
 				log.Println("kc couldnt connect to coordinator", coordaddr)
 			}
 			servercoords = append(servercoords, c)
 			done <- true
-		}(strings.Split(coordbacks[i], "_")[0], strings.Split(addr, "_")[0])
+		}(coordbacks[i])
 	}
 
 	for i := 0; i < len(fsbacks) + len(coordbacks); i++ {

@@ -13,3 +13,4 @@ echo
 data_mvmt
 . tests/basicfail.sh
 . tests/leadcoordfail.sh
+. tests/fastfail.sh

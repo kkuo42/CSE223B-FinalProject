@@ -21,10 +21,11 @@ interface to implement
 
 type Frontend struct {
 	pathfs.FileSystem
-	backendFs BackendFs
+	backendFs *ClientFs
 	kc *KeeperClient
 	backpref string
-	addr string
+	coordaddr string
+	fsaddr string
 	latency int
 }
 
@@ -40,7 +41,7 @@ func (self *Frontend) Init() {
     if e != nil { panic(e) }
 
 	// force initial refresh of server connections
-	self.RefreshClient()
+	//self.RefreshClient()
     go self.WatchBacks()
 }
 
@@ -55,28 +56,29 @@ func (self *Frontend) WatchBacks() {
 }
 
 func (self *Frontend) RefreshClient() error {
-    if self.backpref != "" {
-        // attempt to connect to preferred back
-        back := NewClientFs(self.backpref)
-        e := back.Connect()
-        if e == nil {
-            self.backendFs = back
-            fmt.Println("pref connected to", back.Addr)
-	    self.addr = back.Addr
-            return nil
-        }
-        fmt.Println("couldnt connect to prefered back")
-    }
+	var out string
+	in := "server"
 
-	back, l, e := self.kc.GetBackendForFrontend()
-    if e != nil { return e }
+	back, l, e := self.kc.GetBackendForFrontend(self.backpref)
+	if e != nil { return e }
 
-    self.backendFs = back
-	self.addr = back.Addr
+	self.backendFs = back
+	self.coordaddr = back.Addr
+	e = back.GetAddress(&in, &out)
+	if e != nil { return e }
+	self.fsaddr = out
 	self.latency = l
-    fmt.Println("connected to", back.Addr,"with artificial latency of", self.latency)
+	fmt.Println("connected to", back.Addr,"with artificial latency of", self.latency)
 
-    return nil
+	return nil
+}
+
+func (self *Frontend) removeFailedNode() {
+	fmt.Printf("removing failed nodes: %v %v\n", self.coordaddr, self.fsaddr)
+	e := self.kc.Delete("/alivefs/"+self.fsaddr)
+	if e != nil { fmt.Println("Error Removing alivefs node:", e) }
+	e = self.kc.Delete("/alivecoord/"+self.backendFs.FullAddr)
+	if e != nil { fmt.Println("Error removing backendfs node:", e) }
 }
 
 func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fuseFile nodefs.File, status fuse.Status) {
@@ -90,12 +92,13 @@ func (self *Frontend) Open(name string, flags uint32, context *fuse.Context) (fu
 
 	if e != nil {
 		log.Fatalf("Fuse call to backendFs.Open failed: %v\n, %v\n, we will find a new server", e, output.Status)
+		self.removeFailedNode()
                 e = self.RefreshClient()
                 if e != nil { panic(e) }
                 return self.Open(name, flags, context)
 	}
 	if output.Status == fuse.OK {
-		fuseFile = &FrontendFile{Name: name, Backend: self.backendFs, Context: context, Addr: self.addr}
+		fuseFile = &FrontendFile{Name: name, Backend: self.backendFs, Context: context, Addr: self.coordaddr, latency: self.latency, Frontend: self}
 	}
 
 	return fuseFile, output.Status
@@ -112,6 +115,7 @@ func (self *Frontend) OpenDir(name string, context *fuse.Context) (stream []fuse
 
 	if e != nil {
 		log.Fatalf("Fuse call to backendFs.OpenDir failed: %v\n, find new server", e)
+		self.removeFailedNode()
 		e = self.RefreshClient()
 		if e != nil { panic(e) }
 		return self.OpenDir(name, context)
@@ -134,7 +138,8 @@ func (self *Frontend) GetAttr(name string, context *fuse.Context) (attr *fuse.At
 
 	if e != nil {
 		if e.Error() != "Deleted boolean" {
-			log.Fatalf("Fuse call to backendFs.GetAttr failed: %v\n", e)
+			fmt.Printf("Fuse call to backendFs.GetAttr failed: %v\n", e)
+			self.removeFailedNode()
 			e = self.RefreshClient()
 			if e != nil { panic(e) }
 			return self.GetAttr(name, context)
@@ -155,6 +160,7 @@ func (self *Frontend) Unlink(name string, context *fuse.Context) (code fuse.Stat
 
 	if e != nil {
                 log.Fatalf("Fuse call to backendFs.Unlink failed: %v\n", e)
+		self.removeFailedNode()
                 e = self.RefreshClient()
                 if e != nil { panic(e) }
                 return self.Unlink(name, context)
@@ -174,6 +180,7 @@ func (self *Frontend) Rename(oldName string, newName string, context *fuse.Conte
 
 	if e != nil {
                 log.Fatalf("Fuse call to backendFs.Rename failed: %v\n", e)
+		self.removeFailedNode()
                 e = self.RefreshClient()
                 if e != nil { panic(e) }
                 return self.Rename(oldName, newName, context)
@@ -192,6 +199,7 @@ func (self *Frontend) Mkdir(name string, mode uint32, context *fuse.Context) fus
 
 	if e != nil {
                 log.Fatalf("Fuse call to backendFs.Mkdir failed: %v\n", e)
+		self.removeFailedNode()
                 e = self.RefreshClient()
                 if e != nil { panic(e) }
                 return self.Mkdir(name, mode, context)
@@ -210,6 +218,7 @@ func (self *Frontend) Rmdir(name string, context *fuse.Context) (code fuse.Statu
 
 	if e != nil {
                 log.Fatalf("Fuse call to backendFs.Rmdir failed: %v\n", e)
+		self.removeFailedNode()
                 e = self.RefreshClient()
                 if e != nil { panic(e) }
                 return self.Rmdir(name, context)
@@ -228,11 +237,12 @@ func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fu
 
 	if e != nil {
                 log.Fatalf("Fuse call to backendFs.Create failed: %v\n", e)
+		self.removeFailedNode()
                 e = self.RefreshClient()
                 if e != nil { panic(e) }
                 return self.Create(path, flags, mode, context)
 	}
-	fuseFile = &FrontendFile{Backend: self.backendFs, Name: path, Context: context, Addr: self.addr, latency: self.latency}
+	fuseFile = &FrontendFile{Backend: self.backendFs, Name: path, Context: context, Addr: self.coordaddr, latency: self.latency, Frontend: self}
 
 	return fuseFile, output.Status
 }
@@ -243,6 +253,7 @@ func (self *Frontend) Create(path string, flags uint32, mode uint32, context *fu
 type FrontendFile struct {
 	Name string
 	Backend BackendFs
+	Frontend *Frontend
 	Context *fuse.Context
 	Addr string
 	latency int
@@ -259,8 +270,11 @@ func (self *FrontendFile) Read(dest []byte, off int64) (readResult fuse.ReadResu
 	output := &FileRead_output{Dest: dest, ReadResult: readResult, Status: status}
 	e := self.Backend.FileRead(input, output)
 	if e != nil {
-		log.Fatalf("backend faild to read file: %v\n", e)
-		return nil, fuse.EIO
+		fmt.Printf("backend faild to read file: %v\n", e)
+		self.Frontend.removeFailedNode()
+		e = self.Frontend.RefreshClient()
+		if e != nil { panic(e) }
+		return self.Read(dest, off)
 	}
 	return output.ReadResult, output.Status
 }
@@ -274,15 +288,12 @@ func (self *FrontendFile) Write(data []byte, off int64) (written uint32, code fu
 	e := self.Backend.FileWrite(input, output)
 
 	if e != nil {
-            log.Fatalf("backend faild to write file: %v\n", e)
-            return 0, fuse.ENOSYS
-            /*
-            e = self.RefreshClient()
-            if e != nil { panic(e) }
-            return self.Write(data, off)
-            */
+		fmt.Printf("backend faild to write file: %v\n", e)
+		self.Frontend.removeFailedNode()
+		e = self.Frontend.RefreshClient()
+		if e != nil { panic(e) }
+		return self.Write(data, off)
 	}
-
 	return output.Written, output.Status
 }
 
