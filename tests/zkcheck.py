@@ -90,35 +90,20 @@ server_check = {
 		"9501_f3": {"PrimaryFor": {"b":"b", "a":"a", "c":"c", "c2":"c2"}, "ReplicaFor": {}},
 		"9502_f3": {"PrimaryFor": {"c3":"c3"}, "ReplicaFor": {}},
 		"9601_f3": {"PrimaryFor": {}, "ReplicaFor": {"c3":"c3"}},
-		"9602_f3": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a", "c":"c", "c2":"c2"}},
-		"9501_f32": {"PrimaryFor": {"b":"b", "a":"a", "c":"c"}, "ReplicaFor": {}},
-		"9502_f32": {"PrimaryFor": {"c3":"c3", "c2":"c2"}, "ReplicaFor": {}},
-		"9601_f32": {"PrimaryFor": {}, "ReplicaFor": {"c3":"c3", "c2":"c2"}},
-		"9602_f32": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a", "c":"c"}},
-		"9500_ff1": {"PrimaryFor": {"a":"a", "c2":"c2"}, "ReplicaFor": {}},
-		"9501_ff1": {"PrimaryFor": {"b":"b", "c":"c"}, "ReplicaFor": {}},
-		"9600_ff1": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "c":"c"}},
-		"9601_ff1": {"PrimaryFor": {}, "ReplicaFor": {"a":"a", "c2":"c2"}},
-		"9500_ff2": {"PrimaryFor": {"a":"a"}, "ReplicaFor": {}},
-		"9501_ff2": {"PrimaryFor": {"b":"b", "c":"c", "c2":"c2"}, "ReplicaFor": {}},
-		"9600_ff2": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "c":"c", "c2":"c2"}},
-		"9601_ff2": {"PrimaryFor": {}, "ReplicaFor": {"a":"a"}}
+		"9602_f3": {"PrimaryFor": {}, "ReplicaFor": {"b":"b", "a":"a", "c":"c", "c2":"c2"}}
 	       }
 
 alive_check = {
 		"alive_b1": ["localhost:9500", "localhost:9501", "localhost:9502", "localhost:9600","localhost:9601","localhost:9602"],
 		"alive_a1": ["localhost:9500", "localhost:9501", "localhost:9600", "localhost:9601"],
 		"alive_a2": ["localhost:9501", "localhost:9502", "localhost:9601", "localhost:9602"]
+
+
 		}
 
 op = sys.argv[1]
 path = sys.argv[2]
 check = sys.argv[3]
-c2 = False
-
-if len(sys.argv) == 5:
-	c2 = True
-	check2 = sys.argv[4]
 
 FNULL = open(os.devnull, 'w')
 out = check_output(['zkcli',op,path,check], stderr=FNULL)
@@ -130,26 +115,18 @@ if "data" in path and "get" in op:
 	# we will be checking the json 
 	if data["Primary"] == file_check[check]["Primary"] and data["Replicas"] == file_check[check]["Replicas"]:
 		print "pass"
-	elif c2 and data["Primary"] == file_check[check2]["Primary"] and data["Replicas"] == file_check[check2]["Replicas"]:
-		print "pass"
 	else:
 		print "zkdata:", data["Primary"], data["Replicas"]
 		print "checkdata:", file_check[check]
-		if c2:
-			print "checkdata2:", file_check[check2]
-		print len(sys.argv)
 		print "fail"
 elif "alivemeta" in path and "get" in op:
 	if data == server_check[check]:
-		print "pass"
-	elif c2 and data == server_check[check2]:
+		print "zkdata:", data
+		print "checkdata:", server_check[check]
 		print "pass"
 	else:
 		print "zkdata:", data
 		print "checkdata:", server_check[check]
-		if c2:
-			print "checkdata2:", server_check[check2]
-		print len(sys.argv)
 		print "fail"
 elif "alivemeta" in path and "ls" in op:
 	data = []

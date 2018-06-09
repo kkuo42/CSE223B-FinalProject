@@ -3,21 +3,18 @@ package proj
 import (
 	"net/rpc"
 	"encoding/gob"
-	"strings"
 	"log"
 )
 
 type ClientFs struct {
 	Addr string
-	FullAddr string
 	conn *rpc.Client
 }
 
-func NewClientFs(faddr string) *ClientFs {
+func NewClientFs(addr string) *ClientFs {
 	/* need to register nested structs of input/outputs */
 	gob.Register(&CustomReadResultData{})
-	addr := strings.Split(faddr, "_")[0]
-	return &ClientFs{Addr: addr, FullAddr: faddr}
+	return &ClientFs{Addr: addr}
 }
 
 func (self *ClientFs) Connect() error {
