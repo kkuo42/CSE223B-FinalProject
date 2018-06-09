@@ -22,8 +22,6 @@ func main() {
 
 
 	tester.Coord[0].AddPathBackup(filename, tester.Coord[2].Addr)
-
-	// nothing will happen since no writes happen to cause a swap.
 	tester.Coord[2].SwapPathPrimary(filename, false)
 	tester.Coord[2].RemovePathBackup(filename, tester.Coord[0].SFSAddr, false)
 	tester.AssertFileExists(tester.Coord[2].Path + "/" + filename)
