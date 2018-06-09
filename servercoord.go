@@ -475,10 +475,17 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 
 		for _, replica := range kmeta.Replicas {
 			fmt.Println("Write on replica:", replica.SFSAddr)
-			client := self.serverfsm[replica.SFSAddr]
-			e = client.FileWrite(input, output)
-			if e != nil {
-				return fmt.Errorf("File Write Error %v\n", e)
+			if _, ok := self.serverfsm[replica.SFSAddr]; !ok {
+				// refresh maps as we couldnt get the right server
+				self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+			}
+			if client, ok := self.serverfsm[replica.SFSAddr]; ok {
+				e = client.FileWrite(input, output)
+				if e != nil {
+					return fmt.Errorf("File Write Error %v\n", e)
+				}
+			} else {
+				return fmt.Errorf("Error writing file %v to replica %v", input.Path, replica.SFSAddr)
 			}
 		}
 
@@ -492,13 +499,21 @@ func (self *ServerCoordinator) FileWrite(input *FileWrite_input, output *FileWri
 		Unlock(self, input.Path)
 	} else {
 		fmt.Println("Not primary, forwarding request to primary coordinator")
-		client := self.servercoords[kmeta.Primary.CoordAddr]
-		input.Kmeta = kmeta
-		// tell to increment write on this server
-		input.Faddr = self.SFSAddr
-		e = client.FileWrite(input, output)
-		if e != nil {
-			return e
+		if _, ok := self.servercoords[kmeta.Primary.CoordAddr]; !ok {
+			// refresh maps as we couldnt get the right server
+			// TODO may need to find new primary server in this case
+			self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+		}
+		if client, ok := self.servercoords[kmeta.Primary.CoordAddr]; ok {
+			input.Kmeta = kmeta
+			// tell to increment write on this server
+			input.Faddr = self.SFSAddr
+			e = client.FileWrite(input, output)
+			if e != nil {
+				return fmt.Errorf("File Write Error %v\n", e)
+			}
+		} else {
+			return fmt.Errorf("Error forwarding file write %v to coord %v", input.Path, kmeta.Primary.CoordAddr)
 		}
 	}
 

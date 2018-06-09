@@ -314,6 +314,10 @@ func (k *KeeperClient) Create(path string, attr fuse.Attr, deleted bool) (string
 
 	    // pick a replica on the median
 	    replicaAddr := k.serverfs[len(k.serverfs)/2].Addr
+	    if replicaAddr == k.coordaddr && len(k.serverfs) > 1 {
+		    // you picked yourself
+		    replicaAddr = k.serverfs[len(k.serverfs)/2-1].Addr
+	    }
 
 		if Debug {
 			for _, replica := range k.serverfs {

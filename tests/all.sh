@@ -11,3 +11,5 @@ echo
 . tests/deepdir.sh
 . tests/zkmeta.sh
 data_mvmt
+. tests/basicfail.sh
+. tests/leadcoordfail.sh
