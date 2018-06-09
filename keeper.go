@@ -121,27 +121,31 @@ func (k *KeeperClient) GetBackends() ([]*ClientFs, []*ClientFs, error) {
 	return k.servercoords, k.serverfs, nil
 }
 
+type connectRes struct {
+	back *ClientFs
+	latency int
+}
+
 // Used to get backends for frontend to connect to with artificial random latency added
-func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, error) {
+func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, int, error) {
 	fmt.Println("updating backs")
 	coordbacks, _, _, e := k.client.ChildrenW("/alivecoord")
 	if e != nil {
 		log.Fatalf("error getting alive nodes")
-		return nil, e
+		return nil, 0, e
 	}
-	fmt.Println("coordbacks:", coordbacks)
 
 	// Designate random delay for coordinators
 	for _, addr := range coordbacks {
 		_, ok := k.latencyMap[addr]
 		if !ok {
-			k.latencyMap[addr] = rand.Intn(60)
+			k.latencyMap[addr] = rand.Intn(Latency)
 		}
 	}
 
-	done := make(chan *ClientFs)
-	fmt.Println("Before for loop of go functions")
+	done := make(chan connectRes)
 	for i := range coordbacks {
+
 		go func(coordaddr string) {
 			c := NewClientFs(coordaddr)
 			e := c.Connect()
@@ -150,17 +154,14 @@ func (k *KeeperClient) GetBackendForFrontend() (*ClientFs, error) {
 				return
 			}
 			time.Sleep(time.Millisecond * time.Duration(k.latencyMap[coordaddr]))
-			fmt.Println("kc connected (after fake latency of", k.latencyMap[coordaddr],") to coordinator", coordaddr)
-			done <- c
+			fmt.Println("kc connected after fake latency of", k.latencyMap[coordaddr],"to coordinator", coordaddr)
+			done <- connectRes{c, k.latencyMap[coordaddr]}
 		}(strings.Split(coordbacks[i], "_")[0])
 	}
 
-	fmt.Println("After for loop of go functions")
-
 	result := <-done
 
-	fmt.Println("end of getBackendForFrontend, server:", result)
-	return result, nil
+	return result.back, result.latency, nil
 }
 
 func (k *KeeperClient) UpdateBackends() error {
