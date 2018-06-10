@@ -36,8 +36,8 @@ func main() {
 	var fsaddr string
 
 	if argc == 1 {
-		coordaddr = pubIP() + ":9898"
-		fsaddr = pubIP() + ":9899"
+		coordaddr = pubIP() + ":8898"
+		fsaddr = pubIP() + ":8899"
 	}
 
 	if argc == 3 {
