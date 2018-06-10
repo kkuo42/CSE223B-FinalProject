@@ -58,6 +58,7 @@ servernum=server$2
 zkserver=${!servernum}
 
 ssh -q $zkserver <<EOSHH
+pkill java
 cd gopath/src/proj
 rm -rf zkdata zookeeper.out
 mkdir zkdata
