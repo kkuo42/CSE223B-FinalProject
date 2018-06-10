@@ -7,7 +7,7 @@ import (
 //var ZkAddrs = []string{"54.197.196.191:2181"}
 //var ZkAddrs = []string{"localhost:2181"}
 //var ZkAddrs = []string{"vm166.sysnet.ucsd.edu:2181"}
-var ZkAddrs = []string{"ubuntu@ec2-34-219-144-16.us-west-2.compute.amazonaws.com"}
+var ZkAddrs = []string{"ubuntu@ec2-34-219-144-16.us-west-2.compute.amazonaws.com:8181"}
 var Debug = true
 //var Debug = false
 // go from your ip addr to location in sync array
