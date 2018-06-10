@@ -172,11 +172,17 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 
 		kmeta, e := self.kc.GetData(input.Name)
 		if e != nil {
-			panic(e)
+			return e
 		}
 
 		fmt.Println("kmeta coordaddr", kmeta.Primary.CoordAddr)
-		client := self.servercoords[kmeta.Primary.CoordAddr]
+		if _, ok := self.servercoords[kmeta.Primary.CoordAddr]; !ok {
+			self.servercoords, self.serverfsm, e = self.kc.GetBackendMaps()
+		}
+		client, ok := self.servercoords[kmeta.Primary.CoordAddr]
+		if !ok {
+			return fmt.Errorf("Coord does not exist\n")
+		}
 		clientFile := &FrontendFile{Name: input.Name, Backend: client, Context: input.Context, Addr: self.SFSAddr}
 
 		dest := make([]byte, kmeta.Attr.Size)
@@ -186,7 +192,7 @@ func (self *ServerCoordinator) Open(input *Open_input, output *Open_output) erro
 		cin := Create_input{input.Name, input.Flags, kmeta.Attr.Mode, input.Context}
 		e = self.sfs.Create(&cin, &tmpout)
 		if tmpout.Status != fuse.OK {
-			panic(tmpout.Status)
+			return fmt.Errorf("fuse write error %v\n", tmpout.Status)
 		}
 		if readStatus == fuse.OK {
 			fi := FileWrite_input{input.Name, dest, 0, input.Context, input.Flags, kmeta, self.SFSAddr}
