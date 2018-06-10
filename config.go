@@ -17,4 +17,4 @@ var SequentialEphemeral = int32(3)
 var BalanceTime = 60 * time.Second
 
 // potential artificial latency in milliseconds
-var Latency = 100
+var Latency = 1
