@@ -10,5 +10,5 @@ for i in range(WRITE_NUM):
 elapsed_time = time.time() - start_time
 print ("serial write:")
 print ("\ttotal time:\t", elapsed_time, "seconds")
-print ("\twrites/second:\t", elapsed_time)
+print ("\twrites/second:\t", WRITE_NUM/elapsed_time)
 
